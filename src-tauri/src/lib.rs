@@ -1,0 +1,81 @@
+mod relay;
+use std::sync::Arc;
+#[cfg(target_os = "windows")]
+use tauri::Manager;
+use tauri::State;
+
+#[cfg(target_os = "windows")]
+fn set_windows_topmost(window: &tauri::WebviewWindow, enabled: bool) -> Result<(), String> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+    };
+
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    window.set_always_on_top(enabled).map_err(|error| error.to_string())?;
+    let insert_after = if enabled { HWND_TOPMOST } else { HWND_NOTOPMOST };
+    let result = unsafe {
+        SetWindowPos(
+            hwnd.0 as _,
+            insert_after,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+        )
+    };
+    if result == 0 {
+        return Err("Windows 未能调整展示窗口的置顶层级".into());
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_windows_topmost(_window: &tauri::WebviewWindow, _enabled: bool) -> Result<(), String> {
+    Ok(())
+}
+
+#[tauri::command]
+async fn start_sync_relay(port: Option<u16>, relay: State<'_, Arc<relay::RelayHandle>>) -> Result<String, String> {
+    relay::start(relay.inner().clone(), port.unwrap_or(8787)).await
+}
+#[tauri::command]
+async fn stop_sync_relay(relay: State<'_, Arc<relay::RelayHandle>>) -> Result<(), String> { relay::stop(relay.inner().clone()).await; Ok(()) }
+
+#[tauri::command]
+fn set_display_fullscreen(enabled: bool, window: tauri::WebviewWindow) -> Result<(), String> {
+    #[cfg(not(target_os = "ios"))]
+    {
+        if enabled {
+            window.set_fullscreen(true).map_err(|error| error.to_string())?;
+            set_windows_topmost(&window, true)?;
+        } else {
+            window.set_fullscreen(false).map_err(|error| error.to_string())?;
+            set_windows_topmost(&window, false)?;
+        }
+    }
+
+    #[cfg(target_os = "ios")]
+    let _ = (enabled, window);
+
+    Ok(())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .manage(Arc::new(relay::RelayHandle::default()))
+        .plugin(tauri_plugin_os::init())
+        .setup(|_app| {
+            #[cfg(target_os = "windows")]
+            {
+                let window = _app.get_webview_window("main").expect("main window is configured");
+                window.set_fullscreen(true)?;
+                set_windows_topmost(&window, true).map_err(std::io::Error::other)?;
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![start_sync_relay, stop_sync_relay, set_display_fullscreen])
+        .run(tauri::generate_context!())
+        .expect("展厅地图启动失败");
+}

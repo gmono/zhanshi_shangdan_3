@@ -1,0 +1,42 @@
+{
+  "productName": "观境地图",
+  "version": "0.1.0",
+  "identifier": "com.tauronic.kit",
+  "build": {
+    "beforeDevCommand": "pnpm ionic:dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm ionic:build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "观境 · 展厅地图",
+        "width": 1920,
+        "height": 1080,
+        "minWidth": 900,
+        "minHeight": 600,
+        "maximized": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; connect-src 'self' ipc: http: https: ws: wss:; font-src 'self' data:; worker-src 'self' blob:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "iOS": {
+      "minimumSystemVersion": "14.0",
+      "infoPlist": "Info.plist"
+    }
+  }
+}

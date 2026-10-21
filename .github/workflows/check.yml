@@ -1,0 +1,88 @@
+name: 双端项目检查
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm lint
+      - run: pnpm build
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm tauri build --bundles nsis
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Windows安装包
+          path: src-tauri/target/release/bundle/nsis/*.exe
+
+  # macOS runner 可在没有本地 Mac 的情况下编译 iOS 工程。
+  # 这个 job 编译 Simulator 版本，不需要 Apple Developer 账号。
+  ios-simulator:
+    name: iOS Simulator 编译检查
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 编译 iOS Simulator（不签名）
+        run: pnpm exec tauri ios build --ci --no-sign --target aarch64-sim
+
+  # 生成不签名 IPA 作为下载产物，不需要 Apple Developer Secrets。
+  ios-ipa:
+    name: iOS IPA 构建（不签名）
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 构建 iOS IPA（不签名）
+        run: pnpm exec tauri ios build --ci --no-sign --target aarch64
+      - name: 定位 IPA
+        id: ipa
+        run: |
+          IPA_PATH="$(find src-tauri -type f -name '*.ipa' -print -quit)"
+          test -n "$IPA_PATH"
+          echo "path=$IPA_PATH" >> "$GITHUB_OUTPUT"
+      - name: 上传 IPA 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-IPA-unsigned
+          path: ${{ steps.ipa.outputs.path }}
+          if-no-files-found: error

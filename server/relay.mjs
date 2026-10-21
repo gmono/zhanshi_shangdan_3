@@ -1,0 +1,53 @@
+import { WebSocketServer, WebSocket } from 'ws';
+import { parseState, canPublish } from '../src/sync/protocol.mjs';
+
+export function createRelay({ port = 8787, host = '0.0.0.0' } = {}) {
+  const rooms = new Map();
+  const wss = new WebSocketServer({ port, host, maxPayload: 4096 });
+  const send = (client, value) => {
+    if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(value));
+  };
+  wss.on('connection', (client, request) => {
+    const url = new URL(request.url, 'http://relay.local');
+    const roomId = url.searchParams.get('room') || '';
+    const role = url.searchParams.get('role');
+    if (!/^[a-zA-Z0-9_-]{8,96}$/.test(roomId) || !['controller', 'display'].includes(role)) {
+      client.close(1008, '无效的房间或角色'); return;
+    }
+    if (!rooms.has(roomId)) {
+      if (rooms.size >= 100) { client.close(1013, '房间已满'); return; }
+      rooms.set(roomId, { clients: new Set(), state: null, revision: 0, controller: null, timer: null });
+    }
+    const room = rooms.get(roomId);
+    if (room.clients.size >= 16 || (role === 'controller' && room.controller)) {
+      client.close(1008, '房间已满或已有控制端'); return;
+    }
+    clearTimeout(room.timer);
+    room.clients.add(client);
+    if (role === 'controller') room.controller = client;
+    const presence = () => {
+      const peers = { controller: !!room.controller, displays: [...room.clients].filter(c => c !== room.controller).length };
+      for (const peer of room.clients) send(peer, { type: 'presence', ...peers });
+    };
+    send(client, { type: 'snapshot', state: room.state, revision: room.revision });
+    presence();
+    client.on('error', () => {});
+    client.on('message', raw => {
+      if (!canPublish(role)) { send(client, { type: 'error', message: '展示端只读' }); return; }
+      let message;
+      try { message = JSON.parse(raw.toString()); } catch { send(client, { type: 'error', message: '无效消息' }); return; }
+      const state = message.type === 'state' ? parseState(message.state) : null;
+      if (!state) { send(client, { type: 'error', message: '无效地图状态' }); return; }
+      room.state = state;
+      room.revision++;
+      for (const peer of room.clients) send(peer, { type: 'snapshot', state, revision: room.revision });
+    });
+    client.on('close', () => {
+      room.clients.delete(client);
+      if (room.controller === client) room.controller = null;
+      presence();
+      if (!room.clients.size) room.timer = setTimeout(() => rooms.delete(roomId), 60_000).unref();
+    });
+  });
+  return wss;
+}

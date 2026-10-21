@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile-capability",
+  "description": "移动端地图操作",
+  "windows": ["main"],
+  "platforms": ["iOS", "android"],
+  "permissions": ["core:default", "os:default"]
+}
