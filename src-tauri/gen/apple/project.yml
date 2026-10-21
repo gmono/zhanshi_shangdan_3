@@ -51,6 +51,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         CFBundleShortVersionString: 0.0.0
         CFBundleVersion: 0.0.0
+        CFBundleDisplayName: 展厅App
         NSLocalNetworkUsageDescription: 用于连接展厅大屏，同步地图视角和三图分割线。
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
