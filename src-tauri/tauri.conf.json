@@ -1,5 +1,5 @@
 {
-  "productName": "观境地图",
+  "productName": "展厅App",
   "version": "0.1.0",
   "identifier": "com.tauronic.kit",
   "build": {
@@ -12,7 +12,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "观境 · 展厅地图",
+        "title": "展厅App",
         "width": 1920,
         "height": 1080,
         "minWidth": 900,

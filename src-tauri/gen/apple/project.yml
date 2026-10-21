@@ -10,7 +10,7 @@ configs:
 settingGroups:
   app:
     base:
-      PRODUCT_NAME: Tauronic
+      PRODUCT_NAME: 展厅App
       PRODUCT_BUNDLE_IDENTIFIER: com.tauronic.kit
 targetTemplates:
   app:
