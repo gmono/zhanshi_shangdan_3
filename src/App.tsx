@@ -5,17 +5,14 @@ import {
   IonContent,
   IonHeader,
   IonIcon,
-  IonLabel,
   IonPage,
   IonRouterOutlet,
-  IonSegment,
-  IonSegmentButton,
   IonToolbar,
   setupIonicReact,
   useIonRouter,
 } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
-import { layersOutline, mapOutline, settingsOutline } from 'ionicons/icons';
+import { arrowBackOutline, layersOutline, mapOutline, settingsOutline } from 'ionicons/icons';
 import { Route } from 'react-router-dom';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { getRole } from './platform/role';
@@ -57,6 +54,7 @@ export default function App() {
       <IonReactRouter>
         <IonRouterOutlet>
           <Route exact path="/" render={() => <MapPage state={state} update={update} />} />
+          <Route exact path="/map/:pageId" render={({ match }) => <MapPage state={state} update={update} pageId={match.params.pageId} />} />
           <Route exact path="/settings" render={() => <ConnectionPanel value={connection} onSave={configure} status={status} displays={peers.displays} error={error} homePath={`/${location.search}`} />} />
         </IonRouterOutlet>
       </IonReactRouter>
@@ -64,29 +62,23 @@ export default function App() {
   );
 }
 
-function MapPage({ state, update }: { state: ReturnType<typeof useSync>['state']; update: ReturnType<typeof useSync>['update'] }) {
+function MapPage({ state, update, pageId = 'comparison' }: { state: ReturnType<typeof useSync>['state']; update: ReturnType<typeof useSync>['update']; pageId?: string }) {
   const router = useIonRouter();
-  const selectView = (value: string | undefined) => {
-    if (value === 'map' && state.comparison) update({ comparison: false });
-    if (value === 'comparison' && !state.comparison) update({ comparison: true });
-  };
+  // Route pages remain mounted in Ionic's outlet; initialize only when each page mounts.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (state.page !== pageId) update({ page: pageId, comparison: pageId === 'comparison' }); }, []);
 
   return (
     <IonPage className="controller-page">
       <IonHeader className="controller-header">
         <IonToolbar className="main-toolbar">
           <div className="toolbar-control-row">
-            <span aria-hidden="true" />
-          <IonSegment value={state.comparison ? 'comparison' : 'map'} onIonChange={event => selectView(event.detail.value as string | undefined)}>
-            <IonSegmentButton value="comparison" layout="icon-start">
-              <IonIcon icon={layersOutline} />
-              <IonLabel>三图对比</IonLabel>
-            </IonSegmentButton>
-            <IonSegmentButton value="map" layout="icon-start">
-              <IonIcon icon={mapOutline} />
-              <IonLabel>单图探索</IonLabel>
-            </IonSegmentButton>
-          </IonSegment>
+            {pageId !== 'comparison' ? <IonButton fill="clear" aria-label="返回对比图" onClick={() => router.push(`/${location.search}`, 'back', 'pop')}><IonIcon slot="icon-only" icon={arrowBackOutline} /></IonButton> : <span />}
+            <nav className="map-page-buttons" aria-label="地图页面">
+              {['comparison', 'map-1', 'map-2', 'map-3', 'map-4'].map(id => <IonButton key={id} fill={pageId === id ? 'solid' : 'clear'} onClick={() => { update({ page: id, comparison: id === 'comparison' }); router.push(id === 'comparison' ? `/${location.search}` : `/map/${id}${location.search}`, 'forward', 'push'); }}>
+                <IonIcon slot="start" icon={id === 'comparison' ? layersOutline : mapOutline} />{id === 'comparison' ? '对比图' : `图${id.slice(-1)}`}
+              </IonButton>)}
+            </nav>
             <IonButton fill="clear" aria-label="打开设置" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}>
               <IonIcon slot="icon-only" icon={settingsOutline} />
             </IonButton>
@@ -95,7 +87,7 @@ function MapPage({ state, update }: { state: ReturnType<typeof useSync>['state']
       </IonHeader>
       <IonContent className="controller-content" scrollY={false} scrollX={false}>
         <main className="map-frame">
-          <MapStage state={state} interactive onChange={update} />
+          <MapStage state={state} interactive onChange={update} pageId={pageId} />
         </main>
       </IonContent>
     </IonPage>

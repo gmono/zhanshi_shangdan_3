@@ -9,7 +9,10 @@ const storedConnection = (role: Role): Connection => {
   } catch { return { url: '', room: '' }; }
 };
 export function useSync(role: Role) {
-  const [state, setState] = useState<MapState>(initialState);
+  const [state, setState] = useState<MapState>(() => {
+    const match = typeof location !== 'undefined' ? location.pathname.match(/^\/map\/(map-[1-4])$/) : null;
+    return match ? { ...initialState, page: match[1], comparison: false } : initialState;
+  });
   const latest = useRef(state);
   const socket = useRef<WebSocket | null>(null);
   const [connection, setConnection] = useState<Connection>(() => storedConnection(role));
@@ -66,7 +69,7 @@ export function useSync(role: Role) {
     const next = parseState({ ...base, ...patch });
     if (!next) return;
     latest.current = next; setState(next);
-    if (patch.comparison !== undefined && ready.current && socket.current?.readyState === WebSocket.OPEN) {
+    if ((patch.comparison !== undefined || patch.page !== undefined) && ready.current && socket.current?.readyState === WebSocket.OPEN) {
       socket.current.send(JSON.stringify({ type: 'state', state: next }));
       return;
     }

@@ -23,4 +23,7 @@ describe('双端同步协议', () => {
     expect(canPublish('display')).toBe(false);
     expect(canPublish('unknown')).toBe(false);
   });
+  it('接受带页面和嵌套分割线的同步状态', () => {
+    expect(parseState({ center: [0, 0], zoom: 3, showPoints: false, page: 'comparison', comparison: true, outerSplits: [0.5], innerSplits: [[0.33, 0.67], [0.25, 0.75]], splits: [0.33, 0.67] })).toMatchObject({ page: 'comparison', outerSplits: [0.5], innerSplits: [[0.33, 0.67], [0.25, 0.75]] });
+  });
 });

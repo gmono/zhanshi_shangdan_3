@@ -20,5 +20,5 @@ export const mapConfig = {
 export const initialState: MapState = {
   center: (image ? [width / 2, -height / 2] : fromLonLat([120.155, 30.248])) as [number, number],
   zoom: image ? 3 : 12,
-  showPoints: false, comparison: true, splits: [0.333, 0.667],
+  showPoints: false, page: 'comparison', comparison: true, outerSplits: [0.5], innerSplits: [[0.333, 0.667], [0.333, 0.667]], splits: [0.333, 0.667],
 };
