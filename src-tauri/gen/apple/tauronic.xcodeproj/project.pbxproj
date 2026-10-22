@@ -23,7 +23,7 @@
 
 /* Begin PBXFileReference section */
 		04B30D863DC85255F89A3108 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
-		04E5EFAD4E22F712E617CCC5 /* 展厅App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = 展厅App.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		04E5EFAD4E22F712E617CCC5 /* 展厅App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "展厅App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		085F1B1201874DCD59E7C4D4 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		17FAACE9DA89DDDFB8C006B6 /* lib.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = lib.rs; sourceTree = "<group>"; };
 		23D744F7BD182EFFA2EF0409 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
@@ -339,7 +339,7 @@
 					"$(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.tauronic.kit;
-				PRODUCT_NAME = 展厅App;
+				PRODUCT_NAME = "展厅App";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALID_ARCHS = arm64;
@@ -383,7 +383,7 @@
 					"$(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.tauronic.kit;
-				PRODUCT_NAME = 展厅App;
+				PRODUCT_NAME = "展厅App";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALID_ARCHS = arm64;

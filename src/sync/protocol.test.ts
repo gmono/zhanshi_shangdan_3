@@ -27,3 +27,19 @@ describe('双端同步协议', () => {
     expect(parseState({ center: [0, 0], zoom: 3, showPoints: false, page: 'comparison', comparison: true, outerSplits: [0.5], innerSplits: [[0.33, 0.67], [0.25, 0.75]], splits: [0.33, 0.67] })).toMatchObject({ page: 'comparison', outerSplits: [0.5], innerSplits: [[0.33, 0.67], [0.25, 0.75]] });
   });
 });
+
+describe('嵌套分割协议约束', () => {
+  const state = { center: [0, 0], zoom: 3, showPoints: false, page: 'comparison', comparison: true, outerSplits: [1 / 3, 2 / 3], innerSplits: [[0.5], [0.33, 0.67], []], splits: [0.33, 0.67], mapViews: { 'map-2': { center: [20, -30], zoom: 4 } } };
+  it('支持每地点不同图片数量与独立地图视角', () => {
+    expect(parseState(state)).toEqual(state);
+  });
+  it('拒绝未知页面和地点数量不匹配', () => {
+    expect(parseState({ ...state, page: '../settings' })).toBeNull();
+    expect(parseState({ ...state, innerSplits: [[0.5]] })).toBeNull();
+  });
+  it('拒绝内层交叉、非有限分割和无效地图相机', () => {
+    expect(parseState({ ...state, innerSplits: [[0.7, 0.3], [], []] })).toBeNull();
+    expect(parseState({ ...state, innerSplits: [[NaN], [], []] })).toBeNull();
+    expect(parseState({ ...state, mapViews: { 'map-1': { center: [Infinity, 1], zoom: 3 } } })).toBeNull();
+  });
+});

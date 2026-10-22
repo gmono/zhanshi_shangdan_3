@@ -42,3 +42,8 @@ artifacts/
 .venv/
 # 未压缩的超大原图由 scripts/generate-large-images.py 生成，不提交。
 assets/source-images/*.tif
+
+# 本地签名材料，禁止进入仓库
+*.p12
+*.mobileprovision
+/证书_*.zip

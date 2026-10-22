@@ -23,7 +23,7 @@ export function useSync(role: Role) {
   const ready = useRef(false);
 
   useEffect(() => {
-    if (!connection.url) { setStatus('本地预览'); return; }
+    if (!connection.url) { ready.current = false; setStatus('本地预览'); setPeers({ controller: false, displays: 0 }); return; }
     let stopped = false;
     let retry: ReturnType<typeof setTimeout>;
     const connect = () => {
@@ -43,8 +43,8 @@ export function useSync(role: Role) {
         if (message.type === 'snapshot') {
           const next = parseState(message.state);
           // 控制端保留正在拖动的本地状态，避免自己的回声把分割线拉回。
-          if (next && (role === 'display' || !ready.current)) { latest.current = next; setState(next); }
-          if (!ready.current && !next && role === 'controller') ws.send(JSON.stringify({ type: 'state', state: latest.current }));
+          if (next && role === 'display') { const received = { ...initialState, ...next }; latest.current = received; setState(received); }
+          if (!ready.current && role === 'controller') ws.send(JSON.stringify({ type: 'state', state: latest.current }));
           ready.current = true;
         }
         if (message.type === 'presence') setPeers({ controller: !!message.controller, displays: message.displays });

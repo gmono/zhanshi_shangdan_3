@@ -1,15 +1,24 @@
+const cameraValid = value => value && Array.isArray(value.center) && value.center.length === 2 && value.center.every(n => Number.isFinite(n) && Math.abs(n) <= 1e12) && Number.isFinite(value.zoom) && value.zoom >= 0 && value.zoom <= 24;
+const splitsValid = values => Array.isArray(values) && values.length <= 10 && values.every((n, i) => Number.isFinite(n) && n >= 0.05 && n <= 0.95 && (i === 0 || n - values[i - 1] >= 0.08));
 export function parseState(value) {
-  if (!value || typeof value !== 'object') return null;
-  const { center, zoom, showPoints, page, comparison, splits, outerSplits, innerSplits } = value;
-  if (!Array.isArray(center) || center.length !== 2 || !center.every(n => Number.isFinite(n) && Math.abs(n) <= 1e12)) return null;
-  if (!Number.isFinite(zoom) || zoom < 0 || zoom > 24 || typeof showPoints !== 'boolean' || typeof comparison !== 'boolean') return null;
-  const normalizedPage = typeof page === 'string' && /^[a-z0-9-]{1,32}$/.test(page) ? page : (comparison ? 'comparison' : 'map-1');
-  const baseSplits = Array.isArray(outerSplits) ? outerSplits : splits;
-  if (page === undefined && outerSplits === undefined && innerSplits === undefined && (!Array.isArray(splits) || splits.length !== 2)) return null;
-  if (!Array.isArray(baseSplits) || baseSplits.length < 1 || !baseSplits.every(Number.isFinite) || baseSplits.some((n, i) => n < 0.05 || n > 0.95 || (i > 0 && n - baseSplits[i - 1] < 0.08))) return null;
-  const nested = Array.isArray(innerSplits) ? innerSplits : [Array.isArray(splits) ? splits : [0.5]];
-  if (!nested.every(list => Array.isArray(list) && list.length >= 1 && list.every(Number.isFinite) && list.every((n, i) => n >= 0.05 && n <= 0.95 && (i === 0 || n - list[i - 1] >= 0.08)))) return null;
-  const result = { center: [...center], zoom, showPoints, page: normalizedPage, comparison: normalizedPage === 'comparison', outerSplits: [...baseSplits], innerSplits: nested.map(list => [...list]), splits: [...(Array.isArray(splits) ? splits : nested[0])] };
-  return page === undefined && outerSplits === undefined && innerSplits === undefined ? { center: result.center, zoom, showPoints, comparison, splits: result.splits } : result;
+  if (!cameraValid(value) || typeof value.showPoints !== 'boolean' || typeof value.comparison !== 'boolean') return null;
+  const { center, zoom, showPoints, comparison, splits, page, outerSplits, innerSplits, mapViews } = value;
+  const legacy = page === undefined && outerSplits === undefined && innerSplits === undefined;
+  if (legacy) {
+    if (!splitsValid(splits) || splits.length !== 2) return null;
+    return { center: [...center], zoom, showPoints, comparison, splits: [...splits] };
+  }
+  if (typeof page !== 'string' || !/^(comparison|map-[1-9][0-9]?)$/.test(page)) return null;
+  if (!splitsValid(outerSplits) || !Array.isArray(innerSplits) || innerSplits.length !== outerSplits.length + 1 || !innerSplits.every(splitsValid)) return null;
+  if (!splitsValid(splits) || splits.length !== 2) return null;
+  const cameras = {};
+  if (mapViews !== undefined) {
+    if (!mapViews || typeof mapViews !== 'object' || Array.isArray(mapViews) || Object.keys(mapViews).length > 32) return null;
+    for (const [key, camera] of Object.entries(mapViews)) {
+      if (!/^map-[1-9][0-9]?$/.test(key) || !cameraValid(camera)) return null;
+      cameras[key] = { center: [...camera.center], zoom: camera.zoom };
+    }
+  }
+  return { center: [...center], zoom, showPoints, comparison: page === 'comparison', page, outerSplits: [...outerSplits], innerSplits: innerSplits.map(list => [...list]), splits: [...splits], ...(mapViews !== undefined ? { mapViews: cameras } : {}) };
 }
 export function canPublish(role) { return role === 'controller'; }

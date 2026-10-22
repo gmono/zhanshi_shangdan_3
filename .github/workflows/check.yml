@@ -54,6 +54,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: 校验 Xcode 工程和权限配置
+        run: plutil -lint src-tauri/gen/apple/tauronic.xcodeproj/project.pbxproj src-tauri/gen/apple/tauronic_iOS/Info.plist
       - name: 编译 iOS Simulator（不签名）
         run: pnpm exec tauri ios build --ci --no-sign --target aarch64-sim
 
@@ -72,6 +74,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: 校验 Xcode 工程和权限配置
+        run: plutil -lint src-tauri/gen/apple/tauronic.xcodeproj/project.pbxproj src-tauri/gen/apple/tauronic_iOS/Info.plist
       - name: 构建 iOS IPA（不签名）
         run: pnpm exec tauri ios build --ci --no-sign --target aarch64
       - name: 定位 IPA

@@ -1,0 +1,13 @@
+{
+  "locations": [
+    {"id":"place-1","label":"地点1","images":["/zoomify/scheme-1/","/zoomify/scheme-2/","/zoomify/scheme-3/"]},
+    {"id":"place-2","label":"地点2","images":["/zoomify/scheme-1/","/zoomify/scheme-2/","/zoomify/scheme-3/"]},
+    {"id":"place-3","label":"地点3","images":["/zoomify/scheme-1/","/zoomify/scheme-2/","/zoomify/scheme-3/"]}
+  ],
+  "maps": [
+    {"id":"map-1","label":"图1","url":"/zoomify/scheme-1/"},
+    {"id":"map-2","label":"图2","url":"/zoomify/scheme-2/"},
+    {"id":"map-3","label":"图3","url":"/zoomify/scheme-3/"},
+    {"id":"map-4","label":"图4","url":"/zoomify/scheme-1/"}
+  ]
+}

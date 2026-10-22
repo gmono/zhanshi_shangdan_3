@@ -84,3 +84,12 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+.split-container, .split-panel, .map-surface { position: absolute; inset: 0; overflow: hidden; }
+.split-panel { right: auto; }
+.split-inner > .split-panel { right: 0; }
+.split-outer > .outer-divider { z-index: 6; }
+.outer-divider .divider-grip { top: 30%; }
+.divider-grip::before { content: ""; position: absolute; inset: 0 -10px; }
+.main-toolbar .map-page-buttons { padding: 3px 50px; min-height: 48px; align-items: center; }
+.map-page-buttons ion-button.button-disabled { opacity: 1; --color: #f4f7f5; }
