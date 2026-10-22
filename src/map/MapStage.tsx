@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
@@ -10,9 +10,9 @@ import { SplitContainer } from './SplitContainer';
 import type { MapState, MapViewState } from '../sync/protocol.mjs';
 import 'ol/ol.css';
 
-interface Props { state: MapState; interactive: boolean; onChange: (patch: Partial<MapState>) => void; pageId?: string }
+interface Props { state: MapState; interactive: boolean; onChange: (patch: Partial<MapState>) => void; pageId?: string; active?: boolean }
 const quiet = () => undefined;
-export function MapStage({ state, interactive, onChange, pageId = state.page }: Props) {
+export const MapStage = memo(function MapStage({ state, interactive, onChange, pageId = state.page, active = true }: Props) {
   const comparison = pageId === 'comparison';
   const outer = state.outerSplits?.length === locations.length - 1 ? state.outerSplits : evenSplits(locations.length);
   const mapPage = mapPages.find(page => page.id === pageId) || mapPages[0];
@@ -25,17 +25,21 @@ export function MapStage({ state, interactive, onChange, pageId = state.page }: 
           const innerSplits = locations.map((item, index) => index === placeIndex ? splits : state.innerSplits?.[index] || evenSplits(item.images.length));
           onChange({ innerSplits });
         }}>
-          {place.images.map((url, index) => <MapSurface key={url + index} url={url} interactive={false} showErrors={interactive} fit camera={initialState} onChange={quiet} />)}
+          {place.images.map((url, index) => <MapSurface key={url + index} url={url} interactive={false} active={active} showErrors={interactive} fit camera={initialState} onChange={quiet} />)}
         </SplitContainer>;
       })}
-    </SplitContainer> : <MapSurface url={mapPage.url} interactive={interactive} showErrors={interactive} fit={false} camera={camera} onChange={next => onChange({ ...next, mapViews: { ...state.mapViews, [pageId]: next } })} />}
+    </SplitContainer> : <MapSurface url={mapPage.url} interactive={interactive} active={active} showErrors={interactive} fit={false} camera={camera} onChange={next => onChange({ ...next, mapViews: { ...state.mapViews, [pageId]: next } })} />}
   </div>;
-}
+}, (previous, next) => previous.pageId === next.pageId && previous.interactive === next.interactive && previous.active === next.active && previous.onChange === next.onChange
+  && (previous.state === next.state || (previous.active === false && next.active === false)));
 
-interface SurfaceProps { url: string; interactive: boolean; showErrors: boolean; fit: boolean; camera: MapViewState; onChange: (value: MapViewState) => void }
-function MapSurface({ url, interactive, showErrors, fit, camera, onChange }: SurfaceProps) {
+interface SurfaceProps { url: string; interactive: boolean; active: boolean; showErrors: boolean; fit: boolean; camera: MapViewState; onChange: (value: MapViewState) => void }
+function MapSurface({ url, interactive, active, showErrors, fit, camera, onChange }: SurfaceProps) {
   const root = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<Map | null>(null);
   const view = useRef<View | null>(null);
+  const running = useRef(false);
+  const frame = useRef(0);
   const latest = useRef(camera);
   const callback = useRef(onChange);
   const [tileError, setTileError] = useState(false);
@@ -48,33 +52,42 @@ function MapSurface({ url, interactive, showErrors, fit, camera, onChange }: Sur
     let failed = 0;
     source.on('tileloaderror', () => { if (++failed >= 3) setTileError(true); });
     source.on('tileloadend', () => { failed = 0; setTileError(false); });
-    const map = new Map({ target: root.current!, layers: [new TileLayer({ source, cacheSize: 128, className: 'map-raster' })], view: active, controls: [],
+    // 保留地图对象和瓦片缓存；渲染目标由 Ionic 页面生命周期单独管理。
+    const map = new Map({ layers: [new TileLayer({ source, cacheSize: 128, className: 'map-raster' })], view: active, controls: [],
       interactions: interactions({ dragPan: interactive, pinchZoom: interactive, pinchRotate: false, altShiftDragRotate: false, doubleClickZoom: interactive, mouseWheelZoom: interactive, shiftDragZoom: interactive, keyboard: interactive }) });
-    let frame = 0;
+    mapRef.current = map;
     const publish = () => {
-      frame = 0;
+      frame.current = 0;
       const center = active.getCenter(), zoom = active.getZoom();
-      if (interactive && center && zoom !== undefined) callback.current({ center: [...center] as [number, number], zoom });
+      if (running.current && interactive && center && zoom !== undefined) callback.current({ center: [...center] as [number, number], zoom });
     };
-    const schedule = () => { if (interactive && !frame) frame = requestAnimationFrame(publish); };
+    const schedule = () => { if (running.current && interactive && !frame.current) frame.current = requestAnimationFrame(publish); };
     active.on('change:center', schedule); active.on('change:resolution', schedule);
     map.on('moveend', publish);
+    return () => { running.current = false; cancelAnimationFrame(frame.current); frame.current = 0; map.dispose(); mapRef.current = null; view.current = null; };
+  }, [url, interactive, fit]);
+  useEffect(() => {
+    const map = mapRef.current;
+    const targetView = view.current;
+    if (!map || !targetView || !active || !root.current) return;
+    running.current = true;
+    map.setTarget(root.current);
     const resize = () => {
       if (!root.current || root.current.clientWidth === 0 || root.current.clientHeight === 0) return;
       map.updateSize();
-      if (fit && mapConfig.image) active.fit([0, -mapConfig.height, mapConfig.width, 0], { size: map.getSize() });
+      if (fit && mapConfig.image) targetView.fit([0, -mapConfig.height, mapConfig.width, 0], { size: map.getSize() });
     };
     const observer = new ResizeObserver(resize);
     observer.observe(root.current!); resize();
-    return () => { cancelAnimationFrame(frame); observer.disconnect(); map.dispose(); view.current = null; };
-  }, [url, interactive, fit]);
+    return () => { running.current = false; cancelAnimationFrame(frame.current); frame.current = 0; observer.disconnect(); map.setTarget(undefined); };
+  }, [active, url, interactive, fit]);
   useEffect(() => {
-    const active = view.current;
-    if (!active || fit || (interactive && (active.getInteracting() || active.getAnimating()))) return;
-    const center = active.getCenter();
-    if (!center || Math.abs(center[0] - camera.center[0]) > 0.001 || Math.abs(center[1] - camera.center[1]) > 0.001) active.setCenter(camera.center);
-    if (Math.abs((active.getZoom() ?? 0) - camera.zoom) > 0.0001) active.setZoom(camera.zoom);
-  }, [camera, fit, interactive]);
+    const targetView = view.current;
+    if (!active || !targetView || fit || (interactive && (targetView.getInteracting() || targetView.getAnimating()))) return;
+    const center = targetView.getCenter();
+    if (!center || Math.abs(center[0] - camera.center[0]) > 0.001 || Math.abs(center[1] - camera.center[1]) > 0.001) targetView.setCenter(camera.center);
+    if (Math.abs((targetView.getZoom() ?? 0) - camera.zoom) > 0.0001) targetView.setZoom(camera.zoom);
+  }, [camera, fit, interactive, active]);
   return <div className="map-surface">
     <div className="map-target" ref={root} />
     {showErrors && tileError && <div className="tile-error" role="status">图片加载失败</div>}

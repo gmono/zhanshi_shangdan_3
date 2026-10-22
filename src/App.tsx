@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { IonApp, IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonPage, IonRouterOutlet, IonTitle, IonToolbar, setupIonicReact, useIonRouter } from '@ionic/react';
+import { useEffect, useState } from 'react';
+import { IonApp, IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonPage, IonRouterOutlet, IonTitle, IonToolbar, setupIonicReact, useIonRouter, useIonViewDidEnter, useIonViewDidLeave } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
 import { mapOutline, settingsOutline } from 'ionicons/icons';
 import { Route, useLocation } from 'react-router-dom';
@@ -47,6 +47,9 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
 
 function MapPage({ state, update, pageId }: { state: Sync['state']; update: Sync['update']; pageId: string }) {
   const router = useIonRouter();
+  const [mapActive, setMapActive] = useState(false);
+  useIonViewDidEnter(() => setMapActive(true), []);
+  useIonViewDidLeave(() => setMapActive(false), []);
   const comparison = pageId === 'comparison';
   return <IonPage className="controller-page">
     <IonHeader className="controller-header"><IonToolbar className="main-toolbar">
@@ -59,6 +62,6 @@ function MapPage({ state, update, pageId }: { state: Sync['state']; update: Sync
       </>}
       <IonButtons slot="end"><IonButton fill="clear" aria-label="打开设置" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}><IonIcon slot="icon-only" icon={settingsOutline} /></IonButton></IonButtons>
     </IonToolbar></IonHeader>
-    <IonContent className="controller-content" scrollY={false} scrollX={false}><main className="map-frame"><MapStage state={state} interactive onChange={update} pageId={pageId} /></main></IonContent>
+    <IonContent className="controller-content" scrollY={false} scrollX={false}><main className="map-frame"><MapStage state={state} interactive active={mapActive} onChange={update} pageId={pageId} /></main></IonContent>
   </IonPage>;
 }
