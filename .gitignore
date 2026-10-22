@@ -1,5 +1,79 @@
-# Logs
-logs
+# 前端依赖与编译产物；锁文件仍需提交。
+node_modules/
+dist/
+dist-ssr/
+*.tsbuildinfo
+.eslintcache
+.nx/
+.cache/
+
+# 本地临时资料和最终成品，不进入源码仓库。
+/tmp/
+/artifacts/
+/out/
+.playwright-mcp/
+.dbg/
+
+# Rust / Windows / Xcode 编译缓存；保留受版本管理的原生工程。
+/target/
+/src-tauri/target/
+/src-tauri/gen/schemas/
+/src-tauri/gen/apple/build/
+DerivedData/
+**/xcuserdata/
+*.xcuserstate
+*.xcarchive/
+*.xcresult/
+*.dSYM/
+*.app/
+*.ipa
+*.exe
+*.msi
+*.msix
+*.appx
+*.pdb
+
+# Python 本地环境、缓存与工具输出。
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# 图片及其全部可再生产物均不提交；仅提交来源配置和生成脚本。
+/assets/source-images/
+/public/zoomify/
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.avif
+*.gif
+*.bmp
+*.tif
+*.tiff
+*.heic
+*.heif
+
+# 本机配置和签名材料；示例配置必须保留。
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.local
+*.p12
+*.pfx
+*.mobileprovision
+*.provisionprofile
+*.p8
+*.key
+*.pem
+*.cer
+*.certSigningRequest
+/*.zip
+
+# 日志。
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,43 +81,16 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
+# 编辑器和操作系统临时文件。
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
+.vs/
 .DS_Store
+Thumbs.db
+Desktop.ini
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-
-# misc
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-/.nx
-/.nx/cache
-
-# Optional eslint cache
-.eslintcache
-
-.env
-tmp/
-artifacts/
-*.tsbuildinfo
-.playwright-mcp/
-.venv/
-# 未压缩的超大原图由 scripts/generate-large-images.py 生成，不提交。
-assets/source-images/*.tif
-
-# 本地签名材料，禁止进入仓库
-*.p12
-*.mobileprovision
-/证书_*.zip

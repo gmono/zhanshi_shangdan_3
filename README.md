@@ -2,10 +2,12 @@
 
 基于 [Tauronic](https://github.com/rgilsimoes/Tauronic) 初始化，同一个 Tauri 2 + Ionic React 软件用于 iOS 和 Windows。
 
-- **主屏：三图卷帘联动对比**。三图共享同一视角，用两条分割线控制可见范围。
+- **主屏：三个地点的嵌套卷帘对比**。外层调整地点宽度，内层比较同一地点不同月份的图片。
 - **子界面：普通地图**。iOS 点击按钮进入，可返回三图主屏，也支持浏览器后退。
-- **iOS：操作端**。单指平移、双指缩放、触摸拖动分割线、图层开关、复位。
+- **iOS：操作端**。单图支持单指平移、双指缩放；对比页支持触摸拖动两级分割线；连接配置放在独立设置页。
 - **Windows：展示端**。启动后全屏并保持 topmost，跟随 iOS 的界面、视角、图层和分割比例。
+- **Windows 退出快捷键：`Ctrl + Win + Q`**。使用原生按键处理退出整个应用，在应用运行期间接管此组合键；退出后恢复系统原有行为。Linux 和 iOS 不注册此快捷键。
+- **Windows 管理员权限**。应用清单要求启动时通过 UAC 授权；此清单仅用于 Windows，不改变 iOS 或 Linux 权限。
 
 ## 启动
 
@@ -13,6 +15,7 @@
 
 ```bash
 pnpm install
+# 首次检出需要先按后面的“复现资源”步骤生成本地瓦片。
 pnpm dev
 ```
 
@@ -79,6 +82,16 @@ VITE_MAP_ATTRIBUTION=展厅设计图
 ```
 
 采用像素投影，范围为 `[0, -高度, 宽度, 0]`。三组图必须具有相同尺寸、比例和配准。地图源需允许跨域（CORS）。封闭网络可把全部瓦片部署于展厅本地服务；当前不包含离线瓦片下载器或打包工具。Zoomify 接口已接入，正式超大图性能验收需要你的实际瓦片数据。
+
+## 成品交付
+
+每次完成当前提交的双端构建及本地 iOS 签名校验后，执行：
+
+```bash
+pnpm artifacts:collect
+```
+
+脚本从 `tmp/signed-提交号/` 和 `tmp/windows-提交号/` 收集同一提交的成品，验证 IPA 签名报告及 SHA-256，然后归档到 `out/展厅App.ipa`、`out/展厅App-Windows-x64-setup.exe`，并生成 `out/交付清单.json`。缺包、校验失败或提交号不符时拒绝交付；证书不会复制到 `out/`。
 
 ## Windows 原生构建
 
@@ -207,34 +220,36 @@ WEBKIT_INSPECTOR_SERVER=127.0.0.1:9334 RUST_LOG=info pnpm tauri dev
 
 Windows 展示端启动时自动全屏并置顶：先通过 Tauri 窗口 API 设置 always-on-top，再通过 Win32 `SetWindowPos(HWND_TOPMOST)` 设置原生 Z 序。手动切换全屏也走相同原生路径；退出全屏时恢复普通层级。Linux 保持窗口化，便于开发调试。Windows topmost 位于普通桌面窗口之上；系统安全桌面（例如 UAC 安全提示）仍由操作系统控制。
 
-## 超大图演示资产
+## 超大图真实影像资产
 
-项目当前三图卷帘已换为本地同配准 Zoomify 展厅图，普通地图复用方案一。每张源图为 16000×9000、RGB TIFF 未压缩，432,000,140 字节（约 412 MiB）；每套切成 3045 张 256px JPEG 瓦片，包含 7 级金字塔。运行时仅按当前视口请求瓦片，不传输或解码完整 TIFF。
+当前三个地点使用不同的 NASA Blue Marble: Next Generation 影像：**北美东部、欧洲与西亚、东亚**。每个地点分别使用 **2004年1月、7月、10月** 的真实月度合成图，共9张独立源图。资料来源为 NASA Earth Observatory，具体来源、下载地址、裁剪范围和文件校验值保存在 `assets/image-sources.json` 与 `public/zoomify/manifest.json`。这些影像用于演示，不代表客户展厅数据。
 
-- 原图生成器：`scripts/generate-large-images.py`
-- 原图及预览：`assets/source-images/`（大 TIFF 自动忽略，预览 JPG 保留）
-- 瓦片：`public/zoomify/scheme-1/`、`scheme-2/`、`scheme-3/`
-- 重新生成：`uv run --python .venv/bin/python scripts/generate-large-images.py`
+官方原始分幅为21600×21600；按相同地点固定范围原生像素裁剪为 **16000×9000**，不插值放大。每张未压缩RGB TIFF为432,000,790字节（约412MiB），每套输出3045个256px JPEG瓦片、7级Zoomify金字塔。客户端只按视口加载瓦片，不解码完整TIFF。
 
-**三图卷帘模式固定视角**，只操作分割线。**普通单图模式支持平移和缩放**。Linux Tauri 调试不自动全屏；Windows 展示端启动时自动全屏置顶。当前示意图为程序化测试素材，后续可替换为同尺寸、同配准的真实展厅方案图，并使用同一 Zoomify 目录结构。
+- 导入程序：`scripts/import-large-images.py`，使用libvips流式处理并限制并行度。
+- 来源配置：`assets/image-sources.json`；逐图来源与尺寸记录：`public/zoomify/manifest.json`。
+- 原始下载放在 `tmp/image-research/`，未压缩原图及预览放在 `assets/source-images/`；图片、预览、瓦片和生成清单全部忽略，不提交Git。
+- 正式瓦片：`public/zoomify/north-america-年月/`、`europe-年月/`、`east-asia-年月/`，由脚本生成并随安装包离线提供；仓库只保存来源配置和脚本。
 
-### 将超大图交给 Tauri 本地瓦片服务器
+复现资源：
 
-前端采用按需请求的 Zoomify 瓦片。Tauri 的生产资源目录固定为构建前可知的静态文件，因此动态生成的数 GB 瓦片不建议全部打进安装包。项目可启动一个只读静态瓦片服务，供 iOS 和 Tauri 桌面访问：
+```bash
+UV_CACHE_DIR=./tmp/uv-cache uv venv .venv --python 3.11
+UV_CACHE_DIR=./tmp/uv-cache uv pip install --python .venv/bin/python -r scripts/image-tools-requirements.txt
+.venv/bin/python scripts/import-large-images.py --download --tiles-only
+```
+
+`--tiles-only`只生成运行瓦片，不写大TIFF或预览；需要保存未压缩原图时去掉这个参数。已完成且来源校验一致的图片会复用；已有但未完成的目录需要检查后清理再重试。GitHub CI先按来源配置生成或恢复缓存，再把生成资源交给各端构建，不从Git检出图片。历史示意图生成脚本不再用于当前素材。
+
+### 使用独立本地瓦片服务
+
+默认资源为安装包内相对地址，也可启动只读静态瓦片服务：
 
 ```bash
 pnpm tiles:serve
 ```
 
-服务监听 `0.0.0.0:1421`，只暴露 `public/` 下已生成的瓦片。控制端 `.env` 中设置：
-
-```dotenv
-VITE_MAP_URL=http://192.168.1.50:1421/zoomify/scheme-1/
-VITE_COMPARE_B_URL=http://192.168.1.50:1421/zoomify/scheme-2/
-VITE_COMPARE_C_URL=http://192.168.1.50:1421/zoomify/scheme-3/
-```
-
-将 `192.168.1.50` 替换为运行服务器设备的局域网 IPv4；iOS 和服务器需处于可互访网络，防火墙开放 TCP 1421。大图应放在服务器的 `public/zoomify/` 下。静态示例瓦片现已保存到 Git，可直接网页预览；超大 TIFF 原图由生成脚本按需复现，默认不放进 Git。
+服务监听 `0.0.0.0:1421`，暴露 `public/`。如果使用该服务，在 `src/map/catalog.json` 把相应图片URL改成 `http://展厅电脑局域网IP:1421/zoomify/图片目录/`，保持两端使用同一份清单，并允许防火墙TCP1421。应用自身的相对地址模式不需要这个额外服务。
 
 ### 地点嵌套对比与大图路由
 
@@ -242,6 +257,6 @@ VITE_COMPARE_C_URL=http://192.168.1.50:1421/zoomify/scheme-3/
 
 `src/map/catalog.json` 集中配置地点、每个地点的图片列表和独立大图入口。地点数与各地点图片数可不同；分割线数量按各列表长度自动生成。外层改变地点容器宽度，内层按该地点自身宽度裁切图片。比较页固定全图，二级大图支持手势平移、缩放，各图分别保存相机状态。
 
-仓库目前只有三套现有 Zoomify 图片，因此默认三个地点使用同一组已有图片，图4暂复用第一套图片。这里是可替换的数据配置，尚未收到客户各地点及第四张大图的独立素材，不代表已导入新素材。
+三个地点的图片集合完全独立，每个地点内部三张图保持同一裁剪范围。图1、图2、图3分别进入三个地区的1月影像，图4进入东亚7月影像，四个入口使用不同图片。
 
 同步状态包括当前地图页面、外层边界、每地点内层边界及各大图视角。控制端连上房间立即发布自己的状态，大屏只读跟随；控制端断开时不清空大屏画面。当前同步协议前后端均使用完整状态快照，拖动仍为最多每16ms推送一次。

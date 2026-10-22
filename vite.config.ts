@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     host: host || '0.0.0.0', port: 1420, strictPort: true,
     hmr: host ? { protocol: 'ws', host, port: 1421 } : undefined,
-    watch: { ignored: ['**/src-tauri/**'] },
+    watch: { ignored: ['**/src-tauri/**', '**/public/zoomify/**', '**/assets/source-images/**', '**/tmp/**', '**/out/**'] },
   },
   test: { environment: 'node', include: ['src/**/*.test.ts'] },
 });

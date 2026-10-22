@@ -14,7 +14,7 @@ export const mapConfig = {
   image, width, height,
   projection: image ? new Projection({ code: 'exhibition-pixels', units: 'pixels', extent: [0, -height, width, 0] }) : 'EPSG:3857',
   urls: image
-    ? [env.VITE_MAP_URL || '/zoomify/scheme-1/', env.VITE_COMPARE_B_URL || '/zoomify/scheme-2/', env.VITE_COMPARE_C_URL || '/zoomify/scheme-3/']
+    ? [env.VITE_MAP_URL || catalog.maps[0].url, env.VITE_COMPARE_B_URL || catalog.maps[1].url, env.VITE_COMPARE_C_URL || catalog.maps[2].url]
     : [env.VITE_MAP_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', env.VITE_COMPARE_B_URL || 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', env.VITE_COMPARE_C_URL || 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
   attribution: env.VITE_MAP_ATTRIBUTION || '© OpenStreetMap contributors · Esri',
 };

@@ -1,13 +1,53 @@
 {
   "locations": [
-    {"id":"place-1","label":"地点1","images":["/zoomify/scheme-1/","/zoomify/scheme-2/","/zoomify/scheme-3/"]},
-    {"id":"place-2","label":"地点2","images":["/zoomify/scheme-1/","/zoomify/scheme-2/","/zoomify/scheme-3/"]},
-    {"id":"place-3","label":"地点3","images":["/zoomify/scheme-1/","/zoomify/scheme-2/","/zoomify/scheme-3/"]}
+    {
+      "id": "place-1",
+      "label": "北美东部",
+      "images": [
+        "/zoomify/north-america-200401/",
+        "/zoomify/north-america-200407/",
+        "/zoomify/north-america-200410/"
+      ]
+    },
+    {
+      "id": "place-2",
+      "label": "欧洲与西亚",
+      "images": [
+        "/zoomify/europe-200401/",
+        "/zoomify/europe-200407/",
+        "/zoomify/europe-200410/"
+      ]
+    },
+    {
+      "id": "place-3",
+      "label": "东亚",
+      "images": [
+        "/zoomify/east-asia-200401/",
+        "/zoomify/east-asia-200407/",
+        "/zoomify/east-asia-200410/"
+      ]
+    }
   ],
   "maps": [
-    {"id":"map-1","label":"图1","url":"/zoomify/scheme-1/"},
-    {"id":"map-2","label":"图2","url":"/zoomify/scheme-2/"},
-    {"id":"map-3","label":"图3","url":"/zoomify/scheme-3/"},
-    {"id":"map-4","label":"图4","url":"/zoomify/scheme-1/"}
+    {
+      "id": "map-1",
+      "label": "图1",
+      "url": "/zoomify/north-america-200401/"
+    },
+    {
+      "id": "map-2",
+      "label": "图2",
+      "url": "/zoomify/europe-200401/"
+    },
+    {
+      "id": "map-3",
+      "label": "图3",
+      "url": "/zoomify/east-asia-200401/"
+    },
+    {
+      "id": "map-4",
+      "label": "图4",
+      "url": "/zoomify/east-asia-200407/"
+    }
   ]
 }

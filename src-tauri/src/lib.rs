@@ -1,4 +1,8 @@
 mod relay;
+#[cfg(any(target_os = "windows", test))]
+mod exit_chord;
+#[cfg(target_os = "windows")]
+mod windows_shortcut;
 use std::sync::Arc;
 #[cfg(target_os = "windows")]
 use tauri::Manager;
@@ -69,6 +73,7 @@ pub fn run() {
         .setup(|_app| {
             #[cfg(target_os = "windows")]
             {
+                windows_shortcut::install(_app.handle().clone())?;
                 let window = _app.get_webview_window("main").expect("main window is configured");
                 window.set_fullscreen(true)?;
                 set_windows_topmost(&window, true).map_err(std::io::Error::other)?;

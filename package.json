@@ -21,7 +21,8 @@
     "build:windows": "tauri build --bundles nsis,msi",
     "build:ios": "tauri ios build",
     "relay": "node --env-file-if-exists=.env server/index.mjs",
-    "test": "vitest run && node --test tests/relay.test.mjs",
+    "test": "vitest run && node --test tests/*.test.mjs",
+    "artifacts:collect": "node scripts/collect-artifacts.mjs",
     "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
     "tiles:serve": "node scripts/zoomify-http.mjs"
   },

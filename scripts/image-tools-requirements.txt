@@ -1,0 +1,2 @@
+pyvips[binary]==3.2.0
+pyvips-binary==8.18.7
