@@ -93,3 +93,11 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 .divider-grip::before { content: ""; position: absolute; inset: 0 -10px; }
 .main-toolbar .map-page-buttons { padding: 3px 50px; min-height: 48px; align-items: center; }
 .map-page-buttons ion-button.button-disabled { opacity: 1; --color: #f4f7f5; }
+
+/* 一级地点边界更粗，二级图片边界保持轻量。 */
+.map-stage .outer-divider { width: 4px; background: #f4f6f5; box-shadow: 0 0 7px 1px #0007; }
+.map-stage .inner-divider { width: 1px; background: #ffffffb3; box-shadow: 0 0 2px #0005; }
+.outer-divider .divider-grip { width: 28px; height: 64px; border-radius: 9px; border-color: #c3d3cd; background: #293235f2; box-shadow: 0 3px 10px #0006; font-size: 19px; }
+.inner-divider .divider-grip { width: 18px; height: 44px; border-radius: 6px; border-color: #889992; box-shadow: 0 2px 5px #0004; font-size: 13px; }
+.inner-divider .divider-grip::before { inset-inline: -13px; }
+.outer-divider .divider-grip::before { inset-inline: -8px; }
