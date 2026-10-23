@@ -61,6 +61,6 @@ function MapPage({ state, update, pageId, connected, tileHost }: { state: Sync['
       </>}
       <IonButtons slot="end"><IonButton fill="clear" aria-label="打开设置" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}><IonIcon slot="icon-only" icon={settingsOutline} /></IonButton></IonButtons>
     </IonToolbar></IonHeader>
-    <IonContent className="controller-content" scrollY={false} scrollX={false}><main className="map-frame"><MapStage state={state} interactive active={mapActive} onChange={update} pageId={pageId} tileHost={tileHost} />{!connected && <div className="connection-required"><p>请先连接 Windows 大屏</p><IonButton expand="block" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}>打开设置</IonButton></div>}</main></IonContent>
+    <IonContent className="controller-content" scrollY={false} scrollX={false}><main className="map-frame">{connected ? <MapStage state={state} interactive active={mapActive} onChange={update} pageId={pageId} tileHost={tileHost} /> : <div className="connection-required"><p>请先连接 Windows 大屏</p><IonButton expand="block" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}>打开设置</IonButton></div>}</main></IonContent>
   </IonPage>;
 }

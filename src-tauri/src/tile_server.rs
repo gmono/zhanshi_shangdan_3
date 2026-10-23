@@ -6,8 +6,11 @@ const PORT: u16 = 1421;
 
 pub fn spawn(app: tauri::AppHandle) {
     tokio::spawn(async move {
-        let root = app.path().resource_dir().ok().map(|p| p.join("zoomify"));
-        let root = root.filter(|p| p.is_dir()).or_else(|| Some(PathBuf::from("public/zoomify")));
+        // Windows 资源约定：将预切好的 Zoomify 目录放在 `地图资源/zoomify`；
+        // 开发环境继续兼容仓库的 public/zoomify。
+        let resource = app.path().resource_dir().ok();
+        let roots = resource.iter().flat_map(|p| [p.join("地图资源/zoomify"), p.join("zoomify")]).chain([PathBuf::from("地图资源/zoomify"), PathBuf::from("public/zoomify")]);
+        let root = roots.filter(|p| p.is_dir()).next();
         let Some(root) = root else { return };
         let Ok(listener) = TcpListener::bind(("0.0.0.0", PORT)).await else { return };
         loop { let Ok((mut stream, _)) = listener.accept().await else { break; }; let root = root.clone(); tokio::spawn(async move { let _ = serve(&mut stream, &root).await; }); }

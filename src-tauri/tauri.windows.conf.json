@@ -1,5 +1,5 @@
 {
   "bundle": {
-    "resources": ["../public/zoomify"]
+    "resources": ["../public/zoomify", "../地图资源"]
   }
 }
