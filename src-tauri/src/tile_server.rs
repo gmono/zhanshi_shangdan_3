@@ -9,7 +9,8 @@ pub fn spawn(app: tauri::AppHandle) {
         // Windows 资源约定：将预切好的 Zoomify 目录放在 `地图资源/zoomify`；
         // 开发环境继续兼容仓库的 public/zoomify。
         let resource = app.path().resource_dir().ok();
-        let roots = resource.iter().flat_map(|p| [p.join("地图资源/zoomify"), p.join("zoomify")]).chain([PathBuf::from("地图资源/zoomify"), PathBuf::from("public/zoomify")]);
+        let documents = app.path().document_dir().ok().map(|p| p.join("展厅App/地图资源/zoomify"));
+        let roots = documents.into_iter().chain(resource.iter().flat_map(|p| [p.join("地图资源/zoomify"), p.join("zoomify")])).chain([PathBuf::from("地图资源/zoomify"), PathBuf::from("public/zoomify")]);
         let root = roots.filter(|p| p.is_dir()).next();
         let Some(root) = root else { return };
         let Ok(listener) = TcpListener::bind(("0.0.0.0", PORT)).await else { return };

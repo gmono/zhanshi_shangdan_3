@@ -50,7 +50,7 @@ Windows Tauri 程序自身提供展厅服务，不需要另开 Node 服务：Web
 
 iOS 点击“搜索”时发送一次局域网发现请求；Windows 收到后返回自己的 IPv4 地址和“展厅App”名称，不做周期广播。路由器禁止广播、启用访客隔离或跨网段时，搜索可能为空，此时可手动输入 IPv4 地址。未连接 Windows 时，iOS 显示连接提示层，不加载完整地图瓦片。
 
-Windows 地图资源约定：安装包旁建立 `地图资源/zoomify/`，目录内使用现有 Zoomify 标准结构；每个目录名使用 `地点-年份`，例如 `地点1-2023/TileGroup0/0-0-0.jpg` 和同目录的 `ImageProperties.xml`。程序启动时优先读取这个目录，用户替换资源后重启 Windows 展厅即可生效。资源目录不进入 iOS 包，也不提交 Git。
+Windows 地图资源约定：在 Windows 文档目录建立 `展厅App/地图资源/zoomify/`，目录内使用现有 Zoomify 标准结构；每个目录名使用 `地点-年份`，例如 `地点1-2023/TileGroup0/0-0-0.jpg` 和同目录的 `ImageProperties.xml`。程序启动时优先读取这个目录，用户替换资源后重启 Windows 展厅即可生效。资源目录不进入 iOS 包，也不提交 Git。开发环境也兼容程序目录下的 `地图资源/zoomify/`。
 
 ## 当前百度网盘任务
 
