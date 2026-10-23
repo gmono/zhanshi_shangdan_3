@@ -39,8 +39,8 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
   // 只由当前路由发布页面状态；缓存中的旧页面不会回写自己的页面 ID。
   useEffect(() => { if (pageId) update({ page: pageId, comparison: pageId === 'comparison' }); }, [pageId, update]);
   return <IonRouterOutlet>
-    <Route exact path="/" render={() => <MapPage pageId="comparison" state={sync.state} update={sync.update} connected={!!sync.connection.ip} tileHost={sync.connection.ip} />} />
-    <Route exact path="/map/:pageId" render={({ match }) => <MapPage key={match.params.pageId} pageId={match.params.pageId} state={sync.state} update={sync.update} connected={!!sync.connection.ip} tileHost={sync.connection.ip} />} />
+    <Route exact path="/" render={() => <MapPage pageId="comparison" state={sync.state} update={sync.update} connected={sync.status === '已连接'} tileHost={sync.status === '已连接' ? sync.connection.ip : ''} />} />
+    <Route exact path="/map/:pageId" render={({ match }) => <MapPage key={match.params.pageId} pageId={match.params.pageId} state={sync.state} update={sync.update} connected={sync.status === '已连接'} tileHost={sync.status === '已连接' ? sync.connection.ip : ''} />} />
     <Route exact path="/settings" render={() => <ConnectionPanel value={sync.connection} onSave={sync.configure} status={sync.status} displays={sync.peers.displays} error={sync.error} homePath={`/${route.search}`} />} />
   </IonRouterOutlet>;
 }
