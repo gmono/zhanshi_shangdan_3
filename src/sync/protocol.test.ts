@@ -13,8 +13,8 @@ describe('双端同步协议', () => {
   it('只投影允许的字段，避免注入额外状态', () => {
     expect(parseState({ center: [0, 0], zoom: 3, showPoints: false, comparison: false, splits: [0.33, 0.67], role: 'controller' })).toEqual({ center: [0, 0], zoom: 3, showPoints: false, comparison: false, splits: [0.33, 0.67] });
   });
-  it('拒绝交叉或过近的卷帘分割线', () => {
-    for (const splits of [[0.7, 0.3], [0.5, 0.51], [-1, 2], [0.3]]) {
+  it('拒绝交叉或越界的卷帘分割线', () => {
+    for (const splits of [[0.7, 0.3], [-1, 2], [0.3]]) {
       expect(parseState({ center: [0, 0], zoom: 4, showPoints: true, comparison: true, splits })).toBeNull();
     }
   });
@@ -32,6 +32,12 @@ describe('嵌套分割协议约束', () => {
   const state = { center: [0, 0], zoom: 3, showPoints: false, page: 'comparison', comparison: true, outerSplits: [1 / 3, 2 / 3], innerSplits: [[0.5], [0.33, 0.67], []], splits: [0.33, 0.67], mapViews: { 'map-2': { center: [20, -30], zoom: 4 } } };
   it('支持每地点不同图片数量与独立地图视角', () => {
     expect(parseState(state)).toEqual(state);
+  });
+  it('完整保留两级贴边、重合和窄间距，允许面板完全收起', () => {
+    for (const outerSplits of [[0, 0], [1, 1], [0, 1], [0.5, 0.51]]) {
+      const collapsed = { ...state, outerSplits, innerSplits: [[0, 0], [1, 1], [0, 1]], splits: [0, 1] };
+      expect(parseState(collapsed)).toEqual(collapsed);
+    }
   });
   it('拒绝未知页面和地点数量不匹配', () => {
     expect(parseState({ ...state, page: '../settings' })).toBeNull();

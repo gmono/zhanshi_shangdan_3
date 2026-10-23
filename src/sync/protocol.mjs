@@ -1,5 +1,5 @@
 const cameraValid = value => value && Array.isArray(value.center) && value.center.length === 2 && value.center.every(n => Number.isFinite(n) && Math.abs(n) <= 1e12) && Number.isFinite(value.zoom) && value.zoom >= 0 && value.zoom <= 24;
-const splitsValid = values => Array.isArray(values) && values.length <= 10 && values.every((n, i) => Number.isFinite(n) && n >= 0.05 && n <= 0.95 && (i === 0 || n - values[i - 1] >= 0.08));
+const splitsValid = values => Array.isArray(values) && values.length <= 10 && values.every((n, i) => Number.isFinite(n) && n >= 0 && n <= 1 && (i === 0 || n >= values[i - 1]));
 export function parseState(value) {
   if (!cameraValid(value) || typeof value.showPoints !== 'boolean' || typeof value.comparison !== 'boolean') return null;
   const { center, zoom, showPoints, comparison, splits, page, outerSplits, innerSplits, mapViews } = value;

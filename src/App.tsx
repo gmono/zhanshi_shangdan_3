@@ -54,7 +54,6 @@ function MapPage({ state, update, pageId }: { state: Sync['state']; update: Sync
   return <IonPage className="controller-page">
     <IonHeader className="controller-header"><IonToolbar className="main-toolbar">
       {comparison ? <nav className="map-page-buttons" aria-label="地图页面">
-        <IonButton fill="clear" disabled>对比图</IonButton>
         {mapPages.map(page => <IonButton key={page.id} fill="clear" routerLink={`/map/${page.id}${location.search}`} routerDirection="forward"><IonIcon slot="start" icon={mapOutline} />{page.label}</IonButton>)}
       </nav> : <>
         <IonButtons slot="start"><IonBackButton defaultHref={`/${location.search}`} text="返回" /></IonButtons>

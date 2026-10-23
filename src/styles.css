@@ -54,7 +54,7 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 .map-stage .map-raster canvas { filter: grayscale(1); }
 .map-stage .ol-control, .map-stage .ol-attribution { display: none !important; }
 .divider { position: absolute; z-index: 3; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); background: #f2f4f3d9; box-shadow: 0 0 8px #0009; pointer-events: none; }
-.divider-grip { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 24px; height: 48px; display: grid; place-items: center; border: 1px solid #8ddbc6; border-radius: 8px; color: #eaf6f2; background: #20282aee; box-shadow: 0 4px 14px #0007; font-size: 16px; pointer-events: auto; touch-action: none; cursor: ew-resize; }
+.divider-hit-area { position: absolute; inset-block: 0; left: 50%; transform: translateX(-50%); width: 44px; pointer-events: auto; touch-action: none; cursor: ew-resize; }
 .map-attribution { position: absolute; z-index: 4; bottom: 4px; left: 6px; padding: 2px 5px; border-radius: 4px; color: #eff4f1; background: #14191bbf; font-size: 9px; pointer-events: none; }
 .tile-error { position: absolute; z-index: 8; bottom: 18px; left: 16px; max-width: calc(100% - 32px); padding: 10px 13px; border: 1px solid #956e45; border-radius: 10px; color: #f3d5b5; background: #33271d; font-size: 13px; }
 .connection-error { margin: 12px 3px; color: #efb2a7; font-size: 13px; line-height: 1.5; }
@@ -71,7 +71,7 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 .display-page, .display-content { --background: #000; background: #000; }
 .display-content::part(scroll) { position: relative; overflow: hidden; }
 .display-content .map-stage.display-map { position: fixed; inset: 0; width: 100vw; height: 100dvh; background: #000; }
-.display-map .ol-control, .display-map .ol-attribution, .display-map .map-label, .display-map .divider-grip, .display-map .divider-number, .display-map .tile-error, .display-map .map-attribution { display: none !important; }
+.display-map .ol-control, .display-map .ol-attribution, .display-map .map-label, .display-map .divider-number, .display-map .tile-error, .display-map .map-attribution { display: none !important; }
 .display-map .divider { width: 1px; background: #ffffffc9; box-shadow: 0 0 3px #000; }
 
 @media (max-height: 620px) and (orientation: landscape) {
@@ -89,15 +89,13 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 .split-panel { right: auto; }
 .split-inner > .split-panel { right: 0; }
 .split-outer > .outer-divider { z-index: 6; }
-.outer-divider .divider-grip { top: 30%; }
-.divider-grip::before { content: ""; position: absolute; inset: 0 -10px; }
 .main-toolbar .map-page-buttons { padding: 3px 50px; min-height: 48px; align-items: center; }
 .map-page-buttons ion-button.button-disabled { opacity: 1; --color: #f4f7f5; }
 
 /* 一级地点边界更粗，二级图片边界保持轻量。 */
 .map-stage .outer-divider { width: 4px; background: #f4f6f5; box-shadow: 0 0 7px 1px #0007; }
 .map-stage .inner-divider { width: 1px; background: #ffffffb3; box-shadow: 0 0 2px #0005; }
-.outer-divider .divider-grip { width: 28px; height: 64px; border-radius: 9px; border-color: #c3d3cd; background: #293235f2; box-shadow: 0 3px 10px #0006; font-size: 19px; }
-.inner-divider .divider-grip { width: 18px; height: 44px; border-radius: 6px; border-color: #889992; box-shadow: 0 2px 5px #0004; font-size: 13px; }
-.inner-divider .divider-grip::before { inset-inline: -13px; }
-.outer-divider .divider-grip::before { inset-inline: -8px; }
+.divider[data-edge="start"] .divider-hit-area { left: 100%; transform: none; }
+.divider[data-edge="end"] .divider-hit-area { left: 0; transform: translateX(-100%); }
+/* 内层贴到地点边界时，触摸区向内延伸，避免被外层线的触摸区完全覆盖。 */
+.inner-divider[data-edge] .divider-hit-area { width: 66px; }
