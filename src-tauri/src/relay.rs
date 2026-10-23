@@ -1,7 +1,7 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use std::{collections::HashMap, sync::Arc};
-use tokio::{net::{TcpListener, TcpStream}, sync::{mpsc, Mutex}, task::JoinHandle};
+use tokio::{net::{TcpListener, TcpStream, UdpSocket}, sync::{mpsc, Mutex}, task::JoinHandle, time::{timeout, Duration}};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
 type Tx = mpsc::UnboundedSender<Message>;
@@ -19,6 +19,40 @@ pub async fn start(handle: Arc<RelayHandle>, port: u16) -> Result<String, String
     Ok(format!("ws://0.0.0.0:{port}"))
 }
 pub async fn stop(handle: Arc<RelayHandle>) { if let Some(task) = handle.task.lock().await.take() { task.abort(); } }
+
+const DISCOVERY_PORT: u16 = 8789;
+
+pub fn spawn_discovery_listener() {
+    tokio::spawn(async {
+        let socket = match UdpSocket::bind(("0.0.0.0", DISCOVERY_PORT)).await { Ok(s) => s, Err(_) => return };
+        let mut buffer = [0u8; 512];
+        while let Ok((size, peer)) = socket.recv_from(&mut buffer).await {
+            if std::str::from_utf8(&buffer[..size]).ok() != Some("exhibition-discover-v1") { continue; }
+            let response = serde_json::json!({"name":"展厅App","ip":local_ip_for(&peer).await.unwrap_or_else(|| peer.ip().to_string())});
+            let _ = socket.send_to(response.to_string().as_bytes(), peer).await;
+        }
+    });
+}
+
+async fn local_ip_for(peer: &std::net::SocketAddr) -> Option<String> {
+    let probe = UdpSocket::bind("0.0.0.0:0").await.ok()?;
+    probe.connect(peer).await.ok()?;
+    Some(probe.local_addr().ok()?.ip().to_string())
+}
+
+pub async fn discover_displays() -> Result<Vec<serde_json::Value>, String> {
+    let socket = UdpSocket::bind("0.0.0.0:0").await.map_err(|e| format!("局域网搜索失败: {e}"))?;
+    socket.set_broadcast(true).map_err(|e| format!("局域网搜索失败: {e}"))?;
+    socket.send_to(b"exhibition-discover-v1", ("255.255.255.255", DISCOVERY_PORT)).await.map_err(|e| format!("局域网搜索失败: {e}"))?;
+    let mut results = Vec::new(); let mut buffer = [0u8; 512];
+    loop {
+        match timeout(Duration::from_millis(700), socket.recv_from(&mut buffer)).await {
+            Ok(Ok((size, _))) => if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&buffer[..size]) { if value.get("ip").and_then(|v|v.as_str()).is_some() && !results.iter().any(|v: &serde_json::Value| v == &value) { results.push(value); } },
+            _ => break,
+        }
+    }
+    Ok(results)
+}
 
 async fn accept_loop(listener: TcpListener, relay: Arc<Mutex<Relay>>) {
     while let Ok((stream, _)) = listener.accept().await {

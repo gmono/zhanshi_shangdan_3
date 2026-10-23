@@ -19,7 +19,7 @@ class FakeSocket {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); FakeSocket.instances = []; });
 async function connect(role: 'controller' | 'display') {
   vi.stubGlobal('WebSocket', FakeSocket);
-  localStorage.setItem('exhibition-connection-v1', JSON.stringify({ url: 'ws://localhost:8787', room: 'testroom01' }));
+  localStorage.setItem('exhibition-connection-v1', JSON.stringify({ url: 'ws://127.0.0.1:8787', room: 'testroom01' }));
   const hook = renderHook(() => useSync(role));
   await waitFor(() => expect(FakeSocket.instances.length).toBe(1));
   return { ...hook, ws: FakeSocket.instances[0] };

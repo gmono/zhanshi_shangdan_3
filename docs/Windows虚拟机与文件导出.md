@@ -44,6 +44,12 @@ Windows 的 `\\host.lan\Data` 对应宿主机 `/media/phnics/WorkData/windows-te
 
 `\\host.lan\Data\release` 是本项目 `out/` 的只读成品目录，不能作为网盘下载位置。登录、验证码由用户本人完成，账号信息不写入仓库。
 
+## Windows 版内置服务
+
+Windows Tauri 程序自身提供展厅服务，不需要另开 Node 服务：WebSocket 状态同步固定为 `8787`，Zoomify 瓦片 HTTP 固定为 `1421`，局域网发现请求固定为 UDP `8789`。iOS 设置页只输入 Windows IPv4 地址，协议、端口、域名和房间密钥均由程序固定。
+
+iOS 点击“搜索”时发送一次局域网发现请求；Windows 收到后返回自己的 IPv4 地址和“展厅App”名称，不做周期广播。路由器禁止广播、启用访客隔离或跨网段时，搜索可能为空，此时可手动输入 IPv4 地址。未连接 Windows 时，iOS 显示连接提示层，不加载完整地图瓦片。
+
 ## 当前百度网盘任务
 
 - 分享：`序厅-遥感图`，包含三个地点的多年份遥感图片；账号登录和会员状态由用户本人完成。

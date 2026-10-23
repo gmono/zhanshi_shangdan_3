@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
-import { IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonInput, IonItem, IonLabel, IonList, IonPage, IonTitle, IonToolbar } from '@ionic/react';
+import { IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonInput, IonItem, IonLabel, IonList, IonModal, IonPage, IonTitle, IonToolbar } from '@ionic/react';
 import { radioOutline } from 'ionicons/icons';
-import type { Connection } from '../../sync/useSync';
+import { invoke, isTauri } from '@tauri-apps/api/core';
+import type { Connection, DiscoveredDisplay } from '../../sync/useSync';
 
 interface Props {
   value: Connection;
@@ -13,11 +14,20 @@ interface Props {
 }
 
 export function ConnectionPanel({ value, onSave, status, displays, error, homePath }: Props) {
-  const [url, setUrl] = useState(value.url);
-  const [room, setRoom] = useState(value.room);
+  const [ip, setIp] = useState(value.ip);
+  const [discovering, setDiscovering] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [devices, setDevices] = useState<DiscoveredDisplay[]>([]);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    onSave({ url: url.trim(), room: room.trim() });
+    onSave({ ip: ip.trim() });
+  };
+  const discover = async () => {
+    if (!isTauri()) { setDevices([]); setDiscovering(true); return; }
+    setDiscovering(true); setSearching(true);
+    try { setDevices(await invoke<DiscoveredDisplay[]>('discover_displays')); }
+    catch { setDevices([]); }
+    finally { setSearching(false); }
   };
 
   return (
@@ -41,15 +51,17 @@ export function ConnectionPanel({ value, onSave, status, displays, error, homePa
           </IonList>
           <IonList inset className="settings-list">
             <IonItem>
-              <IonInput label="同步服务地址" labelPlacement="stacked" placeholder="ws://192.168.1.100:8787" value={url} onIonInput={event => setUrl(event.detail.value || '')} autocapitalize="off" autocorrect="off" />
-            </IonItem>
-            <IonItem>
-              <IonInput label="房间密钥" labelPlacement="stacked" placeholder="至少 8 位字母或数字" value={room} onIonInput={event => setRoom(event.detail.value || '')} autocapitalize="off" autocorrect="off" />
+              <IonInput label="Windows 地址" labelPlacement="stacked" placeholder="192.168.1.100" value={ip} onIonInput={event => setIp(event.detail.value || '')} inputmode="decimal" autocapitalize="off" autocorrect="off" />
+              <IonButton slot="end" fill="outline" onClick={discover}>搜索</IonButton>
             </IonItem>
           </IonList>
           {error && <p className="connection-error" role="alert">{error}</p>}
           <IonButton expand="block" type="submit" className="save-connection">保存连接</IonButton>
         </form>
+        <IonModal isOpen={discovering} onDidDismiss={() => setDiscovering(false)}>
+          <IonHeader><IonToolbar><IonTitle>搜索 Windows 大屏</IonTitle><IonButtons slot="end"><IonButton onClick={() => setDiscovering(false)}>关闭</IonButton></IonButtons></IonToolbar></IonHeader>
+          <IonContent><IonList inset>{devices.length ? devices.map(device => <IonItem button key={device.ip} onClick={() => { setIp(device.ip); setDiscovering(false); }}><IonLabel><h2>{device.name}</h2><p>{device.ip}</p></IonLabel></IonItem>) : <IonItem><IonLabel>{isTauri() ? (searching ? '正在搜索局域网设备…' : '没有发现 Windows 大屏') : '网页调试不支持局域网搜索，请输入 IPv4 地址'}</IonLabel></IonItem>}</IonList></IonContent>
+        </IonModal>
       </IonContent>
     </IonPage>
   );

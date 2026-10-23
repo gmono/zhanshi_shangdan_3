@@ -1,4 +1,5 @@
 mod relay;
+mod tile_server;
 #[cfg(any(target_os = "windows", test))]
 mod exit_chord;
 #[cfg(target_os = "windows")]
@@ -47,6 +48,9 @@ async fn start_sync_relay(port: Option<u16>, relay: State<'_, Arc<relay::RelayHa
 async fn stop_sync_relay(relay: State<'_, Arc<relay::RelayHandle>>) -> Result<(), String> { relay::stop(relay.inner().clone()).await; Ok(()) }
 
 #[tauri::command]
+async fn discover_displays() -> Result<Vec<serde_json::Value>, String> { relay::discover_displays().await }
+
+#[tauri::command]
 fn set_display_fullscreen(enabled: bool, window: tauri::WebviewWindow) -> Result<(), String> {
     #[cfg(not(target_os = "ios"))]
     {
@@ -77,10 +81,12 @@ pub fn run() {
                 let window = _app.get_webview_window("main").expect("main window is configured");
                 window.set_fullscreen(true)?;
                 set_windows_topmost(&window, true).map_err(std::io::Error::other)?;
+                relay::spawn_discovery_listener();
+                tile_server::spawn(_app.handle().clone());
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![start_sync_relay, stop_sync_relay, set_display_fullscreen])
+        .invoke_handler(tauri::generate_handler![start_sync_relay, stop_sync_relay, discover_displays, set_display_fullscreen])
         .run(tauri::generate_context!())
         .expect("展厅地图启动失败");
 }

@@ -58,6 +58,8 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 .map-attribution { position: absolute; z-index: 4; bottom: 4px; left: 6px; padding: 2px 5px; border-radius: 4px; color: #eff4f1; background: #14191bbf; font-size: 9px; pointer-events: none; }
 .tile-error { position: absolute; z-index: 8; bottom: 18px; left: 16px; max-width: calc(100% - 32px); padding: 10px 13px; border: 1px solid #956e45; border-radius: 10px; color: #f3d5b5; background: #33271d; font-size: 13px; }
 .connection-error { margin: 12px 3px; color: #efb2a7; font-size: 13px; line-height: 1.5; }
+.connection-required { position: absolute; z-index: 20; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: min(360px, calc(100% - 36px)); padding: 22px; border: 1px solid #475257; border-radius: 16px; background: #22272bf2; box-shadow: 0 10px 30px #0008; text-align: center; }
+.connection-required p { margin: 0 0 14px; color: var(--app-muted); }
 .settings-content { --background: var(--app-canvas); }
 .settings-content form { width: min(680px, 100%); margin: 0 auto; padding: 20px 18px 32px; }
 .settings-list { overflow: hidden; margin: 0 0 16px; border: 1px solid var(--app-divider); border-radius: 12px; background: var(--app-surface); }

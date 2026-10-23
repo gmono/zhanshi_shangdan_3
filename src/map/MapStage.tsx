@@ -10,9 +10,9 @@ import { SplitContainer } from './SplitContainer';
 import type { MapState, MapViewState } from '../sync/protocol.mjs';
 import 'ol/ol.css';
 
-interface Props { state: MapState; interactive: boolean; onChange: (patch: Partial<MapState>) => void; pageId?: string; active?: boolean }
+interface Props { state: MapState; interactive: boolean; onChange: (patch: Partial<MapState>) => void; pageId?: string; active?: boolean; tileHost?: string }
 const quiet = () => undefined;
-export const MapStage = memo(function MapStage({ state, interactive, onChange, pageId = state.page, active = true }: Props) {
+export const MapStage = memo(function MapStage({ state, interactive, onChange, pageId = state.page, active = true, tileHost }: Props) {
   const comparison = pageId === 'comparison';
   const outer = state.outerSplits?.length === locations.length - 1 ? state.outerSplits : evenSplits(locations.length);
   const mapPage = mapPages.find(page => page.id === pageId) || mapPages[0];
@@ -25,16 +25,16 @@ export const MapStage = memo(function MapStage({ state, interactive, onChange, p
           const innerSplits = locations.map((item, index) => index === placeIndex ? splits : state.innerSplits?.[index] || evenSplits(item.images.length));
           onChange({ innerSplits });
         }}>
-          {place.images.map((url, index) => <MapSurface key={url + index} url={url} interactive={false} active={active} showErrors={interactive} fit camera={initialState} onChange={quiet} />)}
+          {place.images.map((url, index) => <MapSurface key={url + index} url={url} tileHost={tileHost} interactive={false} active={active} showErrors={interactive} fit camera={initialState} onChange={quiet} />)}
         </SplitContainer>;
       })}
-    </SplitContainer> : <MapSurface url={mapPage.url} interactive={interactive} active={active} showErrors={interactive} fit={false} camera={camera} onChange={next => onChange({ ...next, mapViews: { ...state.mapViews, [pageId]: next } })} />}
+    </SplitContainer> : <MapSurface url={mapPage.url} tileHost={tileHost} interactive={interactive} active={active} showErrors={interactive} fit={false} camera={camera} onChange={next => onChange({ ...next, mapViews: { ...state.mapViews, [pageId]: next } })} />}
   </div>;
-}, (previous, next) => previous.pageId === next.pageId && previous.interactive === next.interactive && previous.active === next.active && previous.onChange === next.onChange
+}, (previous, next) => previous.pageId === next.pageId && previous.interactive === next.interactive && previous.active === next.active && previous.tileHost === next.tileHost && previous.onChange === next.onChange
   && (previous.state === next.state || (previous.active === false && next.active === false)));
 
-interface SurfaceProps { url: string; interactive: boolean; active: boolean; showErrors: boolean; fit: boolean; camera: MapViewState; onChange: (value: MapViewState) => void }
-function MapSurface({ url, interactive, active, showErrors, fit, camera, onChange }: SurfaceProps) {
+interface SurfaceProps { url: string; tileHost?: string; interactive: boolean; active: boolean; showErrors: boolean; fit: boolean; camera: MapViewState; onChange: (value: MapViewState) => void }
+function MapSurface({ url, tileHost, interactive, active, showErrors, fit, camera, onChange }: SurfaceProps) {
   const root = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const view = useRef<View | null>(null);
@@ -45,7 +45,8 @@ function MapSurface({ url, interactive, active, showErrors, fit, camera, onChang
   const [tileError, setTileError] = useState(false);
   latest.current = camera; callback.current = onChange;
   useEffect(() => {
-    const source = mapConfig.image ? new Zoomify({ url, size: [mapConfig.width, mapConfig.height], crossOrigin: 'anonymous' }) : new XYZ({ url, crossOrigin: 'anonymous', attributions: mapConfig.attribution, maxZoom: 19 });
+    const tileUrl = tileHost && mapConfig.image ? `http://${tileHost}:1421${url}` : url;
+    const source = mapConfig.image ? new Zoomify({ url: tileUrl, size: [mapConfig.width, mapConfig.height], crossOrigin: 'anonymous' }) : new XYZ({ url: tileUrl, crossOrigin: 'anonymous', attributions: mapConfig.attribution, maxZoom: 19 });
     const active = new View({ projection: mapConfig.projection, center: latest.current.center, zoom: latest.current.zoom, minZoom: 0, maxZoom: 24, enableRotation: false, showFullExtent: mapConfig.image,
       ...(mapConfig.image ? { extent: [0, -mapConfig.height, mapConfig.width, 0], resolutions: (source as Zoomify).getTileGrid()?.getResolutions() } : {}) });
     view.current = active;
@@ -65,7 +66,7 @@ function MapSurface({ url, interactive, active, showErrors, fit, camera, onChang
     active.on('change:center', schedule); active.on('change:resolution', schedule);
     map.on('moveend', publish);
     return () => { running.current = false; cancelAnimationFrame(frame.current); frame.current = 0; map.dispose(); mapRef.current = null; view.current = null; };
-  }, [url, interactive, fit]);
+  }, [url, tileHost, interactive, fit]);
   useEffect(() => {
     const map = mapRef.current;
     const targetView = view.current;

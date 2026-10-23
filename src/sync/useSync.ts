@@ -2,12 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { parseState, type MapState, type Role } from './protocol.mjs';
 import { initialState } from '../map/config';
 
-export interface Connection { url: string; room: string }
-const storedConnection = (role: Role): Connection => {
+export const FIXED_ROOM = 'exhibition-main-room';
+export const FIXED_WS_PORT = 8787;
+export const FIXED_TILE_PORT = 1421;
+export interface Connection { ip: string }
+export interface DiscoveredDisplay { name: string; ip: string }
+const storedConnection = (): Connection => {
   try {
-    return JSON.parse(localStorage.getItem('exhibition-connection-v1') || 'null') || { url: role === 'display' && import.meta.env.TAURI_ENV_PLATFORM !== 'ios' ? 'ws://127.0.0.1:8787' : (import.meta.env.VITE_RELAY_URL || ''), room: import.meta.env.VITE_ROOM || 'exhibition-browser-preview' };
-  } catch { return { url: '', room: '' }; }
+    const saved = JSON.parse(localStorage.getItem('exhibition-connection-v2') || 'null');
+    if (saved && typeof saved.ip === 'string') return saved;
+    const legacy = JSON.parse(localStorage.getItem('exhibition-connection-v1') || 'null');
+    const legacyUrl = typeof legacy?.url === 'string' ? legacy.url : '';
+    return { ip: legacyUrl.replace(/^wss?:\/\//, '').replace(/:\d+$/, '') };
+  } catch { return { ip: '' }; }
 };
+export const isIPv4 = (value: string) => /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/.test(value);
 export function useSync(role: Role) {
   const [state, setState] = useState<MapState>(() => {
     const match = typeof location !== 'undefined' ? location.pathname.match(/^\/map\/(map-[1-4])$/) : null;
@@ -15,7 +24,7 @@ export function useSync(role: Role) {
   });
   const latest = useRef(state);
   const socket = useRef<WebSocket | null>(null);
-  const [connection, setConnection] = useState<Connection>(() => storedConnection(role));
+  const [connection, setConnection] = useState<Connection>(() => storedConnection());
   const [status, setStatus] = useState('本地预览');
   const [peers, setPeers] = useState({ controller: false, displays: 0 });
   const [error, setError] = useState('');
@@ -23,19 +32,16 @@ export function useSync(role: Role) {
   const ready = useRef(false);
 
   useEffect(() => {
-    if (!connection.url) { ready.current = false; setStatus('本地预览'); setPeers({ controller: false, displays: 0 }); return; }
+    if (!connection.ip) { ready.current = false; setStatus('等待连接 Windows'); setPeers({ controller: false, displays: 0 }); return; }
     let stopped = false;
     let retry: ReturnType<typeof setTimeout>;
     const connect = () => {
-      let url: URL;
-      try {
-        url = new URL(connection.url);
-        if (!['ws:', 'wss:'].includes(url.protocol) || !/^[a-zA-Z0-9_-]{8,96}$/.test(connection.room)) throw new Error();
-      } catch { setError('请输入 ws:// 或 wss:// 地址，房间密钥为 8–96 位字母、数字、下划线或短横线'); setStatus('配置无效'); return; }
-      url.searchParams.set('role', role); url.searchParams.set('room', connection.room);
+      if (!isIPv4(connection.ip)) { setError('请输入 Windows 的 IPv4 地址，例如 192.168.1.100'); setStatus('地址无效'); return; }
+      const url = new URL(`ws://${connection.ip}:${FIXED_WS_PORT}`);
+      url.searchParams.set('role', role); url.searchParams.set('room', FIXED_ROOM);
       setStatus('连接中'); ready.current = false;
       const ws = new WebSocket(url); socket.current = ws;
-      ws.onopen = () => { if (stopped) return; ws.send(JSON.stringify({ type: 'hello', role, room: connection.room })); setStatus('已连接'); setError(''); };
+      ws.onopen = () => { if (stopped) return; ws.send(JSON.stringify({ type: 'hello', role, room: FIXED_ROOM })); setStatus('已连接'); setError(''); };
       ws.onmessage = event => {
         if (stopped) return;
         let message;
@@ -80,7 +86,7 @@ export function useSync(role: Role) {
     }, 16);
   }, [role]);
   const configure = (next: Connection) => {
-    try { localStorage.setItem('exhibition-connection-v1', JSON.stringify(next)); } catch { /* 存储受限时仍可连接 */ }
+    try { localStorage.setItem('exhibition-connection-v2', JSON.stringify(next)); } catch { /* 存储受限时仍可连接 */ }
     setError(''); setConnection(next);
   };
   return { state, update, connection, configure, status, peers, error };
