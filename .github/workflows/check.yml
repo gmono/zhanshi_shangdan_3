@@ -107,6 +107,14 @@ jobs:
         run: plutil -lint src-tauri/gen/apple/tauronic.xcodeproj/project.pbxproj src-tauri/gen/apple/tauronic_iOS/Info.plist
       - name: 编译 iOS Simulator（不签名）
         run: pnpm exec tauri ios build --ci --no-sign --target aarch64-sim
+      - name: 在 iPad 模拟器实际安装并验证启动
+        run: bash scripts/check-ios-launch.sh
+      - name: 保存 iPad 启动证据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-launch-diagnostics
+          path: tmp/ios-launch-check/
 
   # 生成不签名 IPA 作为下载产物，不需要 Apple Developer Secrets。
   ios-ipa:

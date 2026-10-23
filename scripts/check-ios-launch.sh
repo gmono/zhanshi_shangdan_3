@@ -4,13 +4,13 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 report="${IOS_LAUNCH_REPORT:-tmp/ios-launch-check}"
 mkdir -p "$report"
-app="${IOS_LAUNCH_APP:-$root/src-tauri/gen/apple/build/arm64-sim/展厅App.app}"
+app="${IOS_LAUNCH_APP:-$root/src-tauri/gen/apple/build/arm64-sim/Exhibition.app}"
 test -d "$app" || { echo '缺少模拟器应用成品' >&2; exit 1; }
 xcrun simctl list devices available -j > tmp/ios-launch-check/devices.json
 device=$(node --input-type=module -e 'import fs from "node:fs";const all=JSON.parse(fs.readFileSync("tmp/ios-launch-check/devices.json","utf8"));const choices=Object.entries(all.devices).filter(([key])=>key.includes("iOS")).flatMap(([,list])=>list).filter(d=>d.isAvailable&&d.name.includes("iPad"));if(!choices.length)throw Error("没有可用iPad模拟器");console.log((choices.find(d=>d.state==="Booted")||choices[0]).udid)')
 collect() {
   xcrun simctl io "$device" screenshot "$report/screen.png" || true
-  xcrun simctl spawn "$device" log show --last 5m --style compact --predicate 'process == "展厅App" OR process == "Exhibition" OR process == "ReportCrash" OR process == "SpringBoard"' > "$report/system.log" 2>&1 || true
+  xcrun simctl spawn "$device" log show --last 5m --style compact --predicate 'process == "展厅App" OR process == "Exhibition" OR process == "ReportCrash" OR process == "SpringBoard"' > "$report/system.txt" 2>&1 || true
   if [[ -d "$HOME/Library/Logs/DiagnosticReports" ]]; then
     cp -R "$HOME/Library/Logs/DiagnosticReports" "$report/DiagnosticReports" || true
   fi
@@ -19,6 +19,9 @@ trap collect EXIT
 xcrun simctl boot "$device" 2>/dev/null || true
 xcrun simctl bootstatus "$device" -b
 bundle=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
+executable=$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$app/Info.plist")
+display=$(/usr/libexec/PlistBuddy -c 'Print CFBundleDisplayName' "$app/Info.plist")
+[[ "$executable" == Exhibition && "$display" == 展厅App && -f "$app/$executable" ]] || { echo 'iOS 包内程序路径或显示名称不正确' >&2; exit 1; }
 codesign --force --sign - "$app"
 xcrun simctl install "$device" "$app"
 xcrun simctl launch "$device" "$bundle" | tee "$report/launch.txt"

@@ -22,24 +22,10 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 编译当前源码，不先修改闪退疑点
+      - name: 编译当前源码
         run: pnpm exec tauri ios build --ci --no-sign --target aarch64-sim
       - name: 实际安装到 iPad 模拟器并观察启动
-        id: baseline
-        continue-on-error: true
         run: bash scripts/check-ios-launch.sh
-      - name: 解析原生调用位置
-        if: always()
-        run: |
-          app='src-tauri/gen/apple/build/arm64-sim/展厅App.app'
-          xcrun atos -arch arm64 -o "$app/展厅App" -l 0x100000000 0x100224014 0x1001ee5d4 0x1000cb360 0x10011f438 0x100127e50 > tmp/ios-launch-check/symbols.txt
-      - name: 对照实验，仅更换内部可执行文件路径
-        if: steps.baseline.outcome == 'failure'
-        run: |
-          ditto 'src-tauri/gen/apple/build/arm64-sim/展厅App.app' tmp/Exhibition.app
-          mv 'tmp/Exhibition.app/展厅App' tmp/Exhibition.app/Exhibition
-          /usr/libexec/PlistBuddy -c 'Set CFBundleExecutable Exhibition' tmp/Exhibition.app/Info.plist
-          IOS_LAUNCH_APP="$PWD/tmp/Exhibition.app" IOS_LAUNCH_REPORT=tmp/ios-launch-check/ascii-path bash scripts/check-ios-launch.sh
       - name: 保存启动日志与截图
         if: always()
         uses: actions/upload-artifact@v4
