@@ -43,6 +43,9 @@ __pycache__/
 # 图片及其全部可再生产物均不提交；仅提交来源配置和生成脚本。
 /assets/source-images/
 /public/zoomify/
+/src-tauri/tools/
+/地图资源/*
+!/地图资源/.gitkeep
 *.jpg
 *.jpeg
 *.png

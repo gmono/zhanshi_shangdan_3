@@ -1,7 +1,7 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use std::{collections::HashMap, sync::Arc};
-use tokio::{net::{TcpListener, TcpStream, UdpSocket}, sync::{mpsc, Mutex}, task::JoinHandle, time::{timeout, Duration}};
+use tokio::{net::{TcpListener, TcpStream, UdpSocket}, sync::{mpsc, Mutex}, task::JoinHandle, time::{timeout_at, Duration, Instant}};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
 type Tx = mpsc::UnboundedSender<Message>;
@@ -28,7 +28,8 @@ pub fn spawn_discovery_listener() {
         let mut buffer = [0u8; 512];
         while let Ok((size, peer)) = socket.recv_from(&mut buffer).await {
             if std::str::from_utf8(&buffer[..size]).ok() != Some("exhibition-discover-v1") { continue; }
-            let response = serde_json::json!({"name":"展厅App","ip":local_ip_for(&peer).await.unwrap_or_else(|| peer.ip().to_string())});
+            let Some(ip)=local_ip_for(&peer).await else {continue};
+            let response = serde_json::json!({"service":"exhibition-display-v1","name":"展厅App","ip":ip});
             let _ = socket.send_to(response.to_string().as_bytes(), peer).await;
         }
     });
@@ -45,9 +46,14 @@ pub async fn discover_displays() -> Result<Vec<serde_json::Value>, String> {
     socket.set_broadcast(true).map_err(|e| format!("局域网搜索失败: {e}"))?;
     socket.send_to(b"exhibition-discover-v1", ("255.255.255.255", DISCOVERY_PORT)).await.map_err(|e| format!("局域网搜索失败: {e}"))?;
     let mut results = Vec::new(); let mut buffer = [0u8; 512];
+    let deadline=Instant::now()+Duration::from_secs(3);
     loop {
-        match timeout(Duration::from_millis(700), socket.recv_from(&mut buffer)).await {
-            Ok(Ok((size, _))) => if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&buffer[..size]) { if value.get("ip").and_then(|v|v.as_str()).is_some() && !results.iter().any(|v: &serde_json::Value| v == &value) { results.push(value); } },
+        match timeout_at(deadline, socket.recv_from(&mut buffer)).await {
+            Ok(Ok((size, peer))) => if let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(&buffer[..size]) {
+                if value.get("service").and_then(Value::as_str)!=Some("exhibition-display-v1") || !peer.is_ipv4() {continue;}
+                value["ip"]=json!(peer.ip().to_string());
+                if !results.iter().any(|v: &Value| v["ip"]==value["ip"]) && results.len()<32 {results.push(value);}
+            },
             _ => break,
         }
     }
@@ -93,7 +99,7 @@ async fn handle_client(stream: TcpStream, relay: Arc<Mutex<Relay>>) -> Result<()
     };
     let writer = tokio::spawn(async move { while let Some(message) = rx.recv().await { if sink.send(message).await.is_err() { break; } } });
     while let Some(incoming) = stream.next().await {
-        let message = incoming.map_err(|e| e.to_string())?; if !message.is_text() { continue; }
+        let Ok(message) = incoming else {break}; if message.is_close() {break;} if !message.is_text() { continue; }
         let value: Value = serde_json::from_str(message.to_text().unwrap_or("{}")).unwrap_or_default();
         let is_active_controller = relay.lock().await.rooms.get(&room_id).is_some_and(|room| room.controller == Some(id));
         if role != "controller" || !is_active_controller { let _ = tx.send(Message::Text(json!({"type":"error","message":"展示端只读"}).to_string().into())); continue; }

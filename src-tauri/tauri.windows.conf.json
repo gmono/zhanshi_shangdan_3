@@ -1,5 +1,5 @@
 {
   "bundle": {
-    "resources": ["../public/zoomify", "../地图资源"]
+    "resources": {"tools/vips/":"tools/vips/"}
   }
 }

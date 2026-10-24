@@ -7,7 +7,8 @@ export const FIXED_WS_PORT = 8787;
 export const FIXED_TILE_PORT = 1421;
 export interface Connection { ip: string }
 export interface DiscoveredDisplay { name: string; ip: string }
-const storedConnection = (): Connection => {
+const storedConnection = (role: Role): Connection => {
+  if (role === 'display') return {ip:'127.0.0.1'};
   try {
     const saved = JSON.parse(localStorage.getItem('exhibition-connection-v2') || 'null');
     if (saved && typeof saved.ip === 'string') return saved;
@@ -19,12 +20,12 @@ const storedConnection = (): Connection => {
 export const isIPv4 = (value: string) => /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/.test(value);
 export function useSync(role: Role) {
   const [state, setState] = useState<MapState>(() => {
-    const match = typeof location !== 'undefined' ? location.pathname.match(/^\/map\/(map-[1-4])$/) : null;
+    const match = typeof location !== 'undefined' ? location.pathname.match(/^\/map\/(map-[1-5])$/) : null;
     return match ? { ...initialState, page: match[1], comparison: false } : initialState;
   });
   const latest = useRef(state);
   const socket = useRef<WebSocket | null>(null);
-  const [connection, setConnection] = useState<Connection>(() => storedConnection());
+  const [connection, setConnection] = useState<Connection>(() => storedConnection(role));
   const [status, setStatus] = useState('本地预览');
   const [peers, setPeers] = useState({ controller: false, displays: 0 });
   const [error, setError] = useState('');
@@ -41,12 +42,13 @@ export function useSync(role: Role) {
       url.searchParams.set('role', role); url.searchParams.set('room', FIXED_ROOM);
       setStatus('连接中'); ready.current = false;
       const ws = new WebSocket(url); socket.current = ws;
-      ws.onopen = () => { if (stopped) return; ws.send(JSON.stringify({ type: 'hello', role, room: FIXED_ROOM })); setStatus('已连接'); setError(''); };
+      ws.onopen = () => { if (stopped) return; ws.send(JSON.stringify({ type: 'hello', role, room: FIXED_ROOM })); setError(''); };
       ws.onmessage = event => {
         if (stopped) return;
         let message;
         try { message = JSON.parse(event.data); } catch { return; }
         if (message.type === 'snapshot') {
+          setStatus('已连接');
           const next = parseState(message.state);
           // 控制端保留正在拖动的本地状态，避免自己的回声把分割线拉回。
           if (next && role === 'display') { const received = { ...initialState, ...next }; latest.current = received; setState(received); }

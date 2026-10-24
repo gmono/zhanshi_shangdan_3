@@ -1,30 +1,46 @@
-use std::{path::{Path, PathBuf}, sync::Arc};
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpListener};
-use tauri::Manager;
+use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
+use serde_json::{json,Value};
+use std::{path::PathBuf,sync::{Arc,RwLock}};
+use tower_http::{cors::CorsLayer,services::ServeDir};
 
-const PORT: u16 = 1421;
+pub const PORT:u16=1421;
+#[derive(Clone)]
+pub struct Assets {pub catalog:Arc<RwLock<Result<Value,String>>>}
 
-pub fn spawn(app: tauri::AppHandle) {
-    tokio::spawn(async move {
-        // Windows 资源约定：将预切好的 Zoomify 目录放在 `地图资源/zoomify`；
-        // 开发环境继续兼容仓库的 public/zoomify。
-        let resource = app.path().resource_dir().ok();
-        let documents = app.path().document_dir().ok().map(|p| p.join("展厅App/地图资源/zoomify"));
-        let roots = documents.into_iter().chain(resource.iter().flat_map(|p| [p.join("地图资源/zoomify"), p.join("zoomify")])).chain([PathBuf::from("地图资源/zoomify"), PathBuf::from("public/zoomify")]);
-        let root = roots.filter(|p| p.is_dir()).next();
-        let Some(root) = root else { return };
-        let Ok(listener) = TcpListener::bind(("0.0.0.0", PORT)).await else { return };
-        loop { let Ok((mut stream, _)) = listener.accept().await else { break; }; let root = root.clone(); tokio::spawn(async move { let _ = serve(&mut stream, &root).await; }); }
+pub async fn run(root:PathBuf,cache:PathBuf,vips:PathBuf,bind:&str) -> Result<(),String> {
+    let listener=tokio::net::TcpListener::bind(bind).await.map_err(|e|format!("地图服务启动失败：{e}"))?;
+    std::fs::create_dir_all(&root).map_err(|e|e.to_string())?;
+    std::fs::create_dir_all(&cache).map_err(|e|e.to_string())?;
+    let state=Assets{catalog:Arc::new(RwLock::new(Err("正在准备地图资源".into())))};
+    let worker=state.clone();let worker_cache=cache.clone();
+    tokio::task::spawn_blocking(move||{
+        let result=crate::map_assets::prepare(&root,&worker_cache,&vips);
+        if let Err(error)=&result {let _=std::fs::write(worker_cache.join("资源处理记录.txt"),error);}
+        *worker.catalog.write().unwrap()=result;
     });
+    let app=Router::new().route("/catalog",get(catalog)).route("/health",get(||async {Json(json!({"service":"exhibition","version":1}))}))
+        .nest_service("/zoomify",ServeDir::new(cache)).with_state(state).layer(CorsLayer::permissive());
+    axum::serve(listener,app).await.map_err(|e|e.to_string())
+}
+async fn catalog(State(state):State<Assets>) -> impl IntoResponse {
+    match &*state.catalog.read().unwrap() {
+        Ok(catalog)=>(StatusCode::OK,Json(catalog.clone())),
+        Err(message)=>(StatusCode::SERVICE_UNAVAILABLE,Json(json!({"message":message}))),
+    }
 }
 
-async fn serve(stream: &mut tokio::net::TcpStream, root: &Path) -> Result<(), String> {
-    let mut data = [0u8; 4096]; let size = stream.read(&mut data).await.map_err(|e|e.to_string())?;
-    let request = String::from_utf8_lossy(&data[..size]); let path = request.lines().next().and_then(|line| line.strip_prefix("GET ")).and_then(|line| line.split_whitespace().next()).unwrap_or("/");
-    let decoded = path.trim_start_matches('/').split('/').filter(|part| !part.is_empty() && *part != "." && *part != "..").collect::<Vec<_>>().join("/");
-    let file = root.join(decoded); let body = tokio::fs::read(&file).await.map_err(|e|e.to_string());
-    let (status, content_type, bytes) = match body { Ok(bytes) => ("200 OK", mime(&file), bytes), Err(_) => ("404 Not Found", "text/plain; charset=utf-8", b"not found".to_vec()) };
-    let header = format!("HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n", bytes.len());
-    stream.write_all(header.as_bytes()).await.map_err(|e|e.to_string())?; stream.write_all(&bytes).await.map_err(|e|e.to_string())?; Ok(())
+pub fn spawn(app:tauri::AppHandle) -> Result<(),String> {
+    use tauri::Manager;
+    let exe=std::env::current_exe().map_err(|e|e.to_string())?;
+    let beside=exe.parent().ok_or("无法定位程序目录")?.join("地图资源");
+    let root=if let Some(root)=std::env::var_os("EXHIBITION_RESOURCE_DIR") {PathBuf::from(root)}
+        else if beside.is_dir() {beside}
+        else {app.path().document_dir().map_err(|e|e.to_string())?.join("展厅App/地图资源")};
+    std::fs::create_dir_all(root.join("大图")).map_err(|e|e.to_string())?;
+    std::fs::create_dir_all(root.join("对比")).map_err(|e|e.to_string())?;
+    let vips=if let Some(path)=std::env::var_os("EXHIBITION_VIPS") {PathBuf::from(path)}
+        else {app.path().resource_dir().map_err(|e|e.to_string())?.join("tools/vips/bin/vips.exe")};
+    let cache=root.join(".cache");
+    tauri::async_runtime::spawn(async move {if let Err(error)=run(root,cache,vips,&format!("0.0.0.0:{PORT}")).await {eprintln!("{error}");}});
+    Ok(())
 }
-fn mime(path: &Path) -> &'static str { match path.extension().and_then(|v|v.to_str()) { Some("jpg")|Some("jpeg") => "image/jpeg", Some("png") => "image/png", Some("xml") => "application/xml", Some("json") => "application/json", _ => "application/octet-stream" } }

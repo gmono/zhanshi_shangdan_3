@@ -1,11 +1,13 @@
 mod relay;
+#[cfg(not(target_os="ios"))]
 mod tile_server;
+#[cfg(not(target_os="ios"))]
+mod map_assets;
 #[cfg(any(target_os = "windows", test))]
 mod exit_chord;
 #[cfg(target_os = "windows")]
 mod windows_shortcut;
 use std::sync::Arc;
-#[cfg(target_os = "windows")]
 use tauri::Manager;
 use tauri::State;
 
@@ -75,14 +77,21 @@ pub fn run() {
         .manage(Arc::new(relay::RelayHandle::default()))
         .plugin(tauri_plugin_os::init())
         .setup(|_app| {
+            #[cfg(not(target_os="ios"))]
+            {
+                tile_server::spawn(_app.handle().clone()).map_err(std::io::Error::other)?;
+                let relay=_app.state::<Arc<relay::RelayHandle>>().inner().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error)=relay::start(relay,8787).await {eprintln!("{error}");return;}
+                    relay::spawn_discovery_listener();
+                });
+            }
             #[cfg(target_os = "windows")]
             {
                 windows_shortcut::install(_app.handle().clone())?;
                 let window = _app.get_webview_window("main").expect("main window is configured");
                 window.set_fullscreen(true)?;
                 set_windows_topmost(&window, true).map_err(std::io::Error::other)?;
-                relay::spawn_discovery_listener();
-                tile_server::spawn(_app.handle().clone());
             }
             Ok(())
         })
