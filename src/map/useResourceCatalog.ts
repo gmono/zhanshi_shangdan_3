@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { parseCatalog, type ResourceCatalog } from './resourceCatalog';
-import { BehaviorSubject } from 'rxjs';
-import { delay, parseProgress, resourceProgress$, type ResourceProgress } from './resourceProgress';
+import { parseProgress, type ResourceProgress } from './resourceProgress';
 
 export function useResourceCatalog(host: string, enabled: boolean, retain: boolean) {
   const [loaded, setLoaded] = useState<{ host: string; catalog: ResourceCatalog } | null>(null);
@@ -10,41 +9,46 @@ export function useResourceCatalog(host: string, enabled: boolean, retain: boole
   useEffect(() => {
     if (!enabled || !host) return;
     let stopped = false;
-    let timer: ReturnType<typeof setTimeout>;
-    let request: AbortController;
-    const subject = new BehaviorSubject<ResourceProgress | null>(null);
-    const subscription = subject.subscribe(value => { setProgress(value); resourceProgress$.next(value); });
-    const poll = async () => {
-      await delay(0);
+    let socket: WebSocket | undefined;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let latest: ResourceProgress | null = null;
+    const url = `ws://${host}:1421/events`;
+    setProgress(null);
+    setMessage('正在连接地图处理通知服务…');
+    const connect = () => {
       if (stopped) return;
-      request = new AbortController();
-      const deadline = setTimeout(() => request.abort(), 5000);
-      try {
-        const response = await fetch(`http://${host}:1421/catalog`, { signal: request.signal, cache: 'no-store' });
-        const value = await response.json();
-        await delay(0);
-        if (stopped) return;
-        const catalog = response.ok ? parseCatalog(value) : null;
-        const reported = parseProgress(value?.progress);
-        subject.next(catalog ? { phase: 'ready', completed: reported?.total || 11, total: reported?.total || 11, elapsedMs: reported?.elapsedMs || subject.value?.elapsedMs || 0, message: '全部地图准备完成' } : reported);
-        await delay(0);
-        if (stopped) return;
-        if (catalog) { setLoaded({ host, catalog }); setMessage(''); return; }
-        setMessage(typeof value?.message === 'string' ? value.message : 'Windows 地图资源尚未就绪');
-      } catch (error) {
-        await delay(0);
-        if (!stopped) {
-          const detail = `无法读取 Windows 地图状态：http://${host}:1421/catalog\n${error instanceof Error ? error.message : String(error)}`;
-          subject.next({ ...subject.value, phase: 'error', completed: subject.value?.completed || 0, total: subject.value?.total || 11, elapsedMs: subject.value?.elapsedMs || 0, message: '无法读取 Windows 地图处理状态，正在重连', error: detail });
-          setMessage(detail);
-        }
-      }
-      finally { clearTimeout(deadline); }
-      await delay(0);
-      if (!stopped) timer = setTimeout(poll, 500);
+      let ws: WebSocket;
+      const failed = () => {
+        if (stopped || (ws && socket !== ws)) return;
+        if (ws) { ws.onmessage = null; ws.onclose = null; ws.onerror = null; ws.close(); }
+        socket = undefined;
+        const detail = `Windows 地图通知连接中断：${url}`;
+        latest = { ...latest, phase: 'error', completed: latest?.completed || 0, total: latest?.total || 11, elapsedMs: latest?.elapsedMs || 0, message: '地图处理通知连接中断，正在重连', error: detail };
+        setProgress(latest); setMessage(latest.message);
+        // 仅连接失败后重连；已连接时没有定时查询。
+        retry = setTimeout(connect, 1000);
+      };
+      try { ws = new WebSocket(url); socket = ws; } catch { failed(); return; }
+      ws.onmessage = event => {
+        if (stopped || socket !== ws) return;
+        try {
+          const value = JSON.parse(event.data);
+          const reported = parseProgress(value?.progress);
+          const catalog = parseCatalog(value?.catalog);
+          if (!reported || (reported.phase === 'ready' && !catalog)) return;
+          latest = reported;
+          setProgress(reported); setMessage(catalog ? '' : reported.message);
+          if (catalog) setLoaded({ host, catalog });
+        } catch { /* 非法消息不能覆盖已验证的状态。 */ }
+      };
+      ws.onclose = failed;
+      ws.onerror = failed;
     };
-    void poll();
-    return () => { stopped = true; clearTimeout(timer); request?.abort(); subscription.unsubscribe(); subject.complete(); };
+    connect();
+    return () => {
+      stopped = true; clearTimeout(retry);
+      if (socket) { socket.onmessage = null; socket.onclose = null; socket.onerror = null; socket.close(); }
+    };
   }, [host, enabled]);
   return { catalog: loaded && loaded.host === host && (enabled || retain) ? loaded.catalog : null, message, progress };
 }

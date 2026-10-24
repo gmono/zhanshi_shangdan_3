@@ -1,49 +1,62 @@
 // @vitest-environment jsdom
-import { renderHook, cleanup, waitFor } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { renderHook, cleanup, act } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useResourceCatalog } from './useResourceCatalog';
 import { parseCatalog } from './resourceCatalog';
 const image = {url:'/zoomify/abc123/',width:49969,height:27750};
 const catalog = {locations:[1,2,3].map(i=>({id:`place-${i}`,label:`地点${i}`,images:[image,image]})),maps:[1,2,3,4,5].map(i=>({...image,id:`map-${i}`,label:`图${i}`}))};
-afterEach(()=>{cleanup();vi.unstubAllGlobals();});
-it('未连接不请求图片或目录，连接后读取真实尺寸，断开立即隐藏目录',async()=>{
-  const fetch=vi.fn(async()=>({ok:true,json:async()=>catalog}));vi.stubGlobal('fetch',fetch);
+const progress={phase:'processing',completed:3,total:11,currentFile:'图1.jpg',elapsedMs:1234,message:'正在处理原图'};
+class Socket {
+  static instances:Socket[]=[];
+  onmessage:((event:{data:string})=>void)|null=null;
+  onclose:(()=>void)|null=null;
+  onerror:(()=>void)|null=null;
+  close=vi.fn();
+  constructor(public url:string){Socket.instances.push(this);}
+  publish(value:unknown){this.onmessage?.({data:JSON.stringify(value)});}
+}
+beforeEach(()=>{vi.useFakeTimers();Socket.instances=[];vi.stubGlobal('WebSocket',Socket);vi.stubGlobal('fetch',vi.fn());});
+afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();});
+it('未连接不建立资源连接；连接后直接接收目录，断开立即隐藏目录',()=>{
   const hook=renderHook(({enabled})=>useResourceCatalog('192.168.1.2',enabled,false),{initialProps:{enabled:false}});
-  expect(fetch).not.toHaveBeenCalled();expect(hook.result.current.catalog).toBeNull();
-  hook.rerender({enabled:true});await waitFor(()=>expect(hook.result.current.catalog?.maps[0].width).toBe(49969));
-  hook.rerender({enabled:false});expect(hook.result.current.catalog).toBeNull();
+  expect(Socket.instances).toHaveLength(0);
+  hook.rerender({enabled:true});const ws=Socket.instances[0];expect(ws.url).toBe('ws://192.168.1.2:1421/events');
+  act(()=>ws.publish({progress:{...progress,phase:'ready',completed:11},catalog}));
+  expect(hook.result.current.catalog?.maps[0].width).toBe(49969);
+  hook.rerender({enabled:false});expect(hook.result.current.catalog).toBeNull();expect(ws.close).toHaveBeenCalled();
 });
-it('拒绝不合法目录和跨域瓦片地址',()=>{
+it('进度和详细错误收到消息即显示，无需推进任何定时器，也不请求HTTP目录',()=>{
+  const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));const ws=Socket.instances[0];
+  act(()=>ws.publish({progress,catalog:null}));expect(hook.result.current.progress).toEqual(progress);
+  const error={...progress,phase:'error',message:'处理失败',error:'vips.exe 退出状态 1：无法解码原图',logPath:'C:\\地图资源\\.cache\\资源处理记录.txt'};
+  act(()=>ws.publish({progress:error,catalog:null}));expect(hook.result.current.progress).toEqual(error);
+  act(()=>vi.advanceTimersByTime(10000));expect(fetch).not.toHaveBeenCalled();expect(Socket.instances).toHaveLength(1);
+});
+it('断线立即显示错误，仅连接失败后重连，新连接直接收到完成目录',()=>{
+  const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));const ws=Socket.instances[0];
+  act(()=>ws.publish({progress,catalog:null}));act(()=>ws.onclose?.());
+  expect(hook.result.current.progress?.phase).toBe('error');expect(hook.result.current.progress?.error).toContain(ws.url);
+  act(()=>vi.advanceTimersByTime(1000));expect(Socket.instances).toHaveLength(2);
+  act(()=>Socket.instances[1].publish({progress:{...progress,phase:'ready',completed:11},catalog}));
+  expect(hook.result.current.catalog?.maps).toHaveLength(5);expect(hook.result.current.progress?.phase).toBe('ready');
+});
+it('忽略已关闭连接的消息，并取消待执行重连',()=>{
+  const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));const ws=Socket.instances[0];
+  const oldMessage=ws.onmessage;act(()=>ws.onclose?.());
+  act(()=>oldMessage?.({data:JSON.stringify({progress,catalog:null})}));expect(hook.result.current.progress?.phase).toBe('error');
+  hook.unmount();act(()=>vi.advanceTimersByTime(10000));expect(Socket.instances).toHaveLength(1);
+});
+it('拒绝不合法目录和跨域瓦片地址，支持原图各自尺寸',()=>{
   expect(parseCatalog(catalog)).toEqual(catalog);
   expect(parseCatalog({...catalog,maps:[{...image,url:'http://other/'}]})).toBeNull();
   expect(parseCatalog({...catalog,locations:[]})).toBeNull();
-});
-it('直接接受每张原图自己的尺寸，不要求用户缩放或配准原图',()=>{
   const original={...catalog,locations:catalog.locations.map(p=>({...p,images:[image,{...image,width:79219,height:46250}]}))};
   expect(parseCatalog(original)).toEqual(original);
 });
-it('连接成功但 Windows 仍在切片时持续重试，资源就绪后自动显示',async()=>{
-  const fetch=vi.fn().mockResolvedValueOnce({ok:false,json:async()=>({message:'正在准备地图资源'})}).mockResolvedValue({ok:true,json:async()=>catalog});
-  vi.stubGlobal('fetch',fetch);
-  const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));
-  await waitFor(()=>expect(hook.result.current.message).toBe('正在准备地图资源'));
-  expect(hook.result.current.catalog).toBeNull();
-  await waitFor(()=>expect(hook.result.current.catalog?.maps).toHaveLength(5),{timeout:4500});
-  expect(fetch).toHaveBeenCalledTimes(2);
-});
-it('Windows处理进度和完整错误通过状态流显示给用户',async()=>{
-  const progress={phase:'error',completed:3,total:11,currentFile:'图1.jpg',sourcePath:'C:\\地图资源\\图1.jpg',elapsedMs:1234,message:'图片处理失败',error:'vips.exe 退出码 1：无法解码原图；完整诊断内容'};
-  vi.stubGlobal('fetch',vi.fn(async()=>({ok:false,json:async()=>({message:progress.message,progress})})));
-  const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));
-  await waitFor(()=>expect(hook.result.current.progress).toEqual(progress));
-  expect(hook.result.current.message).toContain('图片处理失败');
-});
-it('处理中断线时发布详细错误，不能把旧进度留在界面上冒充仍在处理',async()=>{
-  const progress={phase:'processing',completed:2,total:11,elapsedMs:2000,currentFile:'图3.jpg',message:'正在解码'};
-  vi.stubGlobal('fetch',vi.fn().mockResolvedValueOnce({ok:false,json:async()=>({message:'正在解码',progress})}).mockRejectedValue(new Error('Failed to fetch')));
-  const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));
-  await waitFor(()=>expect(hook.result.current.progress?.phase).toBe('processing'));
-  await waitFor(()=>expect(hook.result.current.progress?.phase).toBe('error'),{timeout:2500});
-  expect(hook.result.current.progress?.error).toContain('http://192.168.1.2:1421/catalog');
-  expect(hook.result.current.progress?.error).toContain('Failed to fetch');
+
+it('ready 必须同时带合法目录；坏消息不能覆盖有效进度',()=>{
+  const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));const ws=Socket.instances[0];
+  act(()=>ws.publish({progress,catalog:null}));
+  act(()=>ws.publish({progress:{...progress,phase:'ready',completed:11},catalog:null}));
+  expect(hook.result.current.progress?.phase).toBe('processing');expect(hook.result.current.catalog).toBeNull();
 });

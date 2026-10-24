@@ -157,11 +157,18 @@ pub fn prepare_with_progress(root:&Path,cache:&Path,vips:&Path,report:&dyn Fn(Va
         command.stdout(Stdio::from(fs::File::create(&stdout_path).map_err(|e|e.to_string())?));
         notify("processing","正在解码原图并生成显示瓦片，原图保持不变");
         let mut child=command.spawn().map_err(|e|format!("无法启动图片处理器\n原图：{}\n处理器：{}\n系统错误：{e}",source.path.display(),vips.display()))?;
-        let status=loop {
-            if let Some(status)=child.try_wait().map_err(|e|format!("读取图片处理进程状态失败：{e}"))? {break status;}
-            notify("processing","正在解码原图并生成显示瓦片，原图保持不变");
-            std::thread::sleep(Duration::from_millis(250));
-        };
+        // 子进程退出直接唤醒处理线程，不再 try_wait + sleep 轮询退出状态。
+        let status=std::thread::scope(|scope| {
+            let (done,completion)=std::sync::mpsc::sync_channel(1);
+            scope.spawn(move||{let _=done.send(child.wait());});
+            loop {
+                match completion.recv_timeout(Duration::from_millis(250)) {
+                    Ok(result)=>break result.map_err(|e|format!("读取图片处理进程状态失败：{e}")),
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout)=>notify("processing","正在解码原图并生成显示瓦片，原图保持不变"),
+                    Err(error)=>break Err(format!("图片处理退出通知中断：{error}")),
+                }
+            }
+        })?;
         if !status.success() {
             return Err(format!("图片处理失败\n原图：{}\n处理器：{}\n退出状态：{status}\n错误输出：\n{}\n标准输出：\n{}",source.path.display(),vips.display(),fs::read_to_string(&stderr_path).unwrap_or_default(),fs::read_to_string(&stdout_path).unwrap_or_default()));
         }

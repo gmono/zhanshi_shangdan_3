@@ -1,5 +1,3 @@
-import { BehaviorSubject } from 'rxjs';
-
 export interface ResourceProgress {
   phase: string;
   completed: number;
@@ -13,7 +11,6 @@ export interface ResourceProgress {
   logPath?: string;
 }
 
-export const resourceProgress$ = new BehaviorSubject<ResourceProgress | null>(null);
 export const delay = (milliseconds = 0) => new Promise<void>(resolve => setTimeout(resolve, milliseconds));
 
 export function parseProgress(value: unknown): ResourceProgress | null {
