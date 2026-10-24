@@ -51,7 +51,6 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 .map-slice, .map-target { position: absolute; inset: 0; width: 100%; height: 100%; }
 .map-slice { will-change: clip-path; }
 .map-target .ol-viewport { touch-action: none !important; }
-.map-stage .map-raster canvas { filter: grayscale(1); }
 .map-stage .ol-control, .map-stage .ol-attribution { display: none !important; }
 .divider { position: absolute; z-index: 3; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); background: #f2f4f3d9; box-shadow: 0 0 8px #0009; pointer-events: none; }
 .divider-hit-area { position: absolute; inset-block: 0; left: 50%; transform: translateX(-50%); width: 44px; pointer-events: auto; touch-action: none; cursor: ew-resize; }
@@ -59,6 +58,7 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 .tile-error { position: absolute; z-index: 8; bottom: 18px; left: 16px; max-width: calc(100% - 32px); padding: 10px 13px; border: 1px solid #956e45; border-radius: 10px; color: #f3d5b5; background: #33271d; font-size: 13px; }
 .connection-error { margin: 12px 3px; color: #efb2a7; font-size: 13px; line-height: 1.5; }
 .connection-required { position: absolute; z-index: 50; inset: 0; margin: 0; width: 100%; height: 100%; --background: #191d20; --background-hover: #202629; --color: #cbd4d2; --border-radius: 0; font-size: 18px; }
+.display-status { position: absolute; z-index: 60; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; background: #000; color: #cbd4d2; font-size: 18px; text-align: center; }
 .settings-content { --background: var(--app-canvas); }
 .settings-content form { width: min(680px, 100%); margin: 0 auto; padding: 20px 18px 32px; }
 .settings-list { overflow: hidden; margin: 0 0 16px; border: 1px solid var(--app-divider); border-radius: 12px; background: var(--app-surface); }
