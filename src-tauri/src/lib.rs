@@ -11,6 +11,20 @@ use std::sync::Arc;
 use tauri::Manager;
 use tauri::State;
 
+#[cfg(not(target_os="ios"))]
+fn start_tile_server(app:tauri::AppHandle) -> Result<(),String> {
+    let exe=std::env::current_exe().map_err(|e|e.to_string())?;
+    let root=map_assets::resource_root(&exe,std::env::var_os("EXHIBITION_RESOURCE_DIR").as_deref())?;
+    std::fs::create_dir_all(&root).map_err(|e|e.to_string())?;
+    let vips=if let Some(path)=std::env::var_os("EXHIBITION_VIPS") {std::path::PathBuf::from(path)}
+        else {app.path().resource_dir().map_err(|e|e.to_string())?.join("tools/vips/bin/vips.exe")};
+    let cache=root.join(".cache");
+    tauri::async_runtime::spawn(async move {
+        if let Err(error)=tile_server::run(root,cache,vips,&format!("0.0.0.0:{}",tile_server::PORT)).await {eprintln!("{error}");}
+    });
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
 fn set_windows_topmost(window: &tauri::WebviewWindow, enabled: bool) -> Result<(), String> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -79,7 +93,7 @@ pub fn run() {
         .setup(|_app| {
             #[cfg(not(target_os="ios"))]
             {
-                tile_server::spawn(_app.handle().clone()).map_err(std::io::Error::other)?;
+                start_tile_server(_app.handle().clone()).map_err(std::io::Error::other)?;
                 let relay=_app.state::<Arc<relay::RelayHandle>>().inner().clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(error)=relay::start(relay,8787).await {eprintln!("{error}");return;}

@@ -18,3 +18,16 @@ it('拒绝不合法目录和跨域瓦片地址',()=>{
   expect(parseCatalog({...catalog,maps:[{...image,url:'http://other/'}]})).toBeNull();
   expect(parseCatalog({...catalog,locations:[]})).toBeNull();
 });
+it('直接接受每张原图自己的尺寸，不要求用户缩放或配准原图',()=>{
+  const original={...catalog,locations:catalog.locations.map(p=>({...p,images:[image,{...image,width:79219,height:46250}]}))};
+  expect(parseCatalog(original)).toEqual(original);
+});
+it('连接成功但 Windows 仍在切片时持续重试，资源就绪后自动显示',async()=>{
+  const fetch=vi.fn().mockResolvedValueOnce({ok:false,json:async()=>({message:'正在准备地图资源'})}).mockResolvedValue({ok:true,json:async()=>catalog});
+  vi.stubGlobal('fetch',fetch);
+  const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));
+  await waitFor(()=>expect(hook.result.current.message).toBe('正在准备地图资源'));
+  expect(hook.result.current.catalog).toBeNull();
+  await waitFor(()=>expect(hook.result.current.catalog?.maps).toHaveLength(5),{timeout:4500});
+  expect(fetch).toHaveBeenCalledTimes(2);
+});

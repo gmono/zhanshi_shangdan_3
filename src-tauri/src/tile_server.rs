@@ -28,19 +28,3 @@ async fn catalog(State(state):State<Assets>) -> impl IntoResponse {
         Err(message)=>(StatusCode::SERVICE_UNAVAILABLE,Json(json!({"message":message}))),
     }
 }
-
-pub fn spawn(app:tauri::AppHandle) -> Result<(),String> {
-    use tauri::Manager;
-    let exe=std::env::current_exe().map_err(|e|e.to_string())?;
-    let beside=exe.parent().ok_or("无法定位程序目录")?.join("地图资源");
-    let root=if let Some(root)=std::env::var_os("EXHIBITION_RESOURCE_DIR") {PathBuf::from(root)}
-        else if beside.is_dir() {beside}
-        else {app.path().document_dir().map_err(|e|e.to_string())?.join("展厅App/地图资源")};
-    std::fs::create_dir_all(root.join("大图")).map_err(|e|e.to_string())?;
-    std::fs::create_dir_all(root.join("对比")).map_err(|e|e.to_string())?;
-    let vips=if let Some(path)=std::env::var_os("EXHIBITION_VIPS") {PathBuf::from(path)}
-        else {app.path().resource_dir().map_err(|e|e.to_string())?.join("tools/vips/bin/vips.exe")};
-    let cache=root.join(".cache");
-    tauri::async_runtime::spawn(async move {if let Err(error)=run(root,cache,vips,&format!("0.0.0.0:{PORT}")).await {eprintln!("{error}");}});
-    Ok(())
-}

@@ -11,5 +11,5 @@ export default defineConfig(({command}) => ({
     hmr: host ? { protocol: 'ws', host, port: 1421 } : undefined,
     watch: { ignored: ['**/src-tauri/**', '**/public/zoomify/**', '**/assets/source-images/**', '**/tmp/**', '**/out/**'] },
   },
-  test: { environment: 'node', include: ['src/**/*.test.ts'] },
+  test: { environment: 'node', include: ['src/**/*.test.ts'], maxWorkers: 2, minWorkers: 1 },
 }));

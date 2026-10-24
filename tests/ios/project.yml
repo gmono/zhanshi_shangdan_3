@@ -1,0 +1,34 @@
+name: ExhibitionConnection
+options:
+  deploymentTarget:
+    iOS: '15.0'
+settings:
+  base:
+    GENERATE_INFOPLIST_FILE: YES
+    SWIFT_VERSION: '5.0'
+    TARGETED_DEVICE_FAMILY: '2'
+targets:
+  ConnectionHost:
+    type: application
+    platform: iOS
+    sources: [Host.swift]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.exhibition.connection-test-host
+  ConnectionUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [ConnectionUITests.swift]
+    dependencies:
+      - target: ConnectionHost
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.exhibition.connection-ui-tests
+        TEST_TARGET_NAME: ConnectionHost
+schemes:
+  ExhibitionConnection:
+    build:
+      targets:
+        ConnectionHost: all
+    test:
+      targets: [ConnectionUITests]

@@ -17,6 +17,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm lint
       - run: pnpm build
   windows:
     runs-on: windows-latest
@@ -31,13 +33,66 @@ jobs:
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install --frozen-lockfile
+      - name: 原图读取与缓存回归测试
+        run: cargo test --manifest-path tests/native/Cargo.toml --locked
       - name: 准备内置图片处理器
         run: ./scripts/prepare-vips.ps1
       - run: pnpm tauri build --bundles nsis
+      - name: 安装 Windows 成品并测试 iPad 控制端连接与图片加载
+        shell: pwsh
+        run: |
+          pnpm exec playwright install chromium
+          $installer = (Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          ./scripts/test-windows-native.ps1 -Installer $installer
+      - name: 保存 Windows 原生端到端测试证据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-native-e2e
+          path: tmp/e2e/
       - uses: actions/upload-artifact@v4
         with:
           name: Windows安装包
           path: src-tauri/target/release/bundle/nsis/*.exe
+
+  ios-connection:
+    name: iPad 连接与真实瓦片加载
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pnpm install --frozen-lockfile
+      - run: brew install vips xcodegen
+      - name: 编译生产资源与同步服务的测试入口
+        run: CARGO_TARGET_DIR="$PWD/tmp/native-test-target" cargo build --manifest-path tests/native/Cargo.toml --locked
+      - name: WebKit iPad 控制端端到端测试
+        run: |
+          pnpm build
+          pnpm exec playwright install webkit
+          export E2E_NATIVE_BINARY="$PWD/tmp/native-test-target/debug/exhibition-resource-test-server"
+          pnpm exec playwright test --project=webkit-ipad
+      - name: 编译真正的 iPad 应用
+        run: |
+          if [[ "$(uname -m)" == arm64 ]]; then target=aarch64-sim; else target=x86_64; fi
+          pnpm exec tauri ios build --ci --no-sign --target "$target"
+      - name: iPad 模拟器操作连接、读取目录、加载十一张图片瓦片
+        run: bash scripts/check-ios-connection.sh
+      - name: 保存 iPad 界面、网络请求与 XCTest 结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-connection-e2e
+          path: |
+            tmp/e2e/
+            tmp/ios-connection/
 
   # macOS runner 可在没有本地 Mac 的情况下编译 iOS 工程。
   # 这个 job 编译 Simulator 版本，不需要 Apple Developer 账号。
