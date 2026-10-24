@@ -5,41 +5,10 @@ on:
   pull_request:
   workflow_dispatch:
 jobs:
-  assets:
-    name: 生成或恢复运行瓦片
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
-        id: image-cache
-        with:
-          path: public/zoomify
-          key: zoomify-v1-${{ hashFiles('assets/image-sources.json', 'scripts/import-large-images.py', 'scripts/image-tools-requirements.txt') }}
-      - uses: astral-sh/setup-uv@v6
-        if: steps.image-cache.outputs.cache-hit != 'true'
-        with:
-          enable-cache: false
-      - name: 从来源配置生成瓦片，不提交图片
-        if: steps.image-cache.outputs.cache-hit != 'true'
-        run: |
-          uv venv .venv --python 3.11
-          uv pip install --python .venv/bin/python -r scripts/image-tools-requirements.txt
-          .venv/bin/python scripts/import-large-images.py --download --tiles-only
-      - uses: actions/upload-artifact@v4
-        with:
-          name: map-assets
-          path: public/zoomify/
-          retention-days: 1
-          if-no-files-found: error
   frontend:
-    needs: assets
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: map-assets
-          path: public/zoomify
       - uses: pnpm/action-setup@v4
         with:
           version: 10.12.1
@@ -51,15 +20,11 @@ jobs:
       - run: pnpm test
       - run: pnpm lint
       - run: pnpm build
+      - run: node scripts/check-resource-packing.mjs
   windows:
-    needs: assets
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: map-assets
-          path: public/zoomify
       - uses: pnpm/action-setup@v4
         with:
           version: 10.12.1
@@ -75,6 +40,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./tmp/windows-shortcut-tests.exe
       - run: pnpm install --frozen-lockfile
+      - name: 准备内置图片处理器
+        run: ./scripts/prepare-vips.ps1
       - run: pnpm tauri build --bundles nsis
       - name: 验证 Windows 成品要求管理员权限
         run: ./scripts/check-windows-manifest.ps1 -ExecutablePath ./src-tauri/target/release/tauronic.exe
@@ -86,15 +53,10 @@ jobs:
   # macOS runner 可在没有本地 Mac 的情况下编译 iOS 工程。
   # 这个 job 编译 Simulator 版本，不需要 Apple Developer 账号。
   ios-simulator:
-    needs: assets
     name: iOS Simulator 编译检查
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: map-assets
-          path: public/zoomify
       - uses: pnpm/action-setup@v4
         with:
           version: 10.12.1
@@ -118,16 +80,11 @@ jobs:
 
   # 生成不签名 IPA 作为下载产物，不需要 Apple Developer Secrets。
   ios-ipa:
-    needs: assets
     name: iOS IPA 构建（不签名）
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: map-assets
-          path: public/zoomify
       - uses: pnpm/action-setup@v4
         with:
           version: 10.12.1

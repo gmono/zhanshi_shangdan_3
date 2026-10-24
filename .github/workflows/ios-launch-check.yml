@@ -7,13 +7,6 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
-        id: images
-        with:
-          path: public/zoomify
-          key: zoomify-v1-${{ hashFiles('assets/image-sources.json', 'scripts/import-large-images.py', 'scripts/image-tools-requirements.txt') }}
-      - name: 确认使用完整运行资源
-        run: test '${{ steps.images.outputs.cache-hit }}' = 'true'
       - uses: pnpm/action-setup@v4
         with:
           version: 10.12.1

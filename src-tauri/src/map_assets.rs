@@ -31,7 +31,6 @@ pub fn scan(root: &Path) -> Result<Sources, String> {
                 if year.len()!=4 || !year.bytes().all(|c|c.is_ascii_digit()) { return Err(format!("{label} 的图片请按四位年份命名：{}",file.display())); }
                 if years.insert(year.clone(),Source{path:file,label:year.clone()}).is_some() { return Err(format!("{label} 的 {year} 年存在重复图片")); }
             }
-            if years.len()>11 {return Err(format!("{label} 最多支持11个年份"));}
             if !years.is_empty() { places.insert(label,years.into_values().collect()); }
         }
     }
