@@ -31,3 +31,19 @@ it('连接成功但 Windows 仍在切片时持续重试，资源就绪后自动�
   await waitFor(()=>expect(hook.result.current.catalog?.maps).toHaveLength(5),{timeout:4500});
   expect(fetch).toHaveBeenCalledTimes(2);
 });
+it('Windows处理进度和完整错误通过状态流显示给用户',async()=>{
+  const progress={phase:'error',completed:3,total:11,currentFile:'图1.jpg',sourcePath:'C:\\地图资源\\图1.jpg',elapsedMs:1234,message:'图片处理失败',error:'vips.exe 退出码 1：无法解码原图；完整诊断内容'};
+  vi.stubGlobal('fetch',vi.fn(async()=>({ok:false,json:async()=>({message:progress.message,progress})})));
+  const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));
+  await waitFor(()=>expect(hook.result.current.progress).toEqual(progress));
+  expect(hook.result.current.message).toContain('图片处理失败');
+});
+it('处理中断线时发布详细错误，不能把旧进度留在界面上冒充仍在处理',async()=>{
+  const progress={phase:'processing',completed:2,total:11,elapsedMs:2000,currentFile:'图3.jpg',message:'正在解码'};
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValueOnce({ok:false,json:async()=>({message:'正在解码',progress})}).mockRejectedValue(new Error('Failed to fetch')));
+  const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));
+  await waitFor(()=>expect(hook.result.current.progress?.phase).toBe('processing'));
+  await waitFor(()=>expect(hook.result.current.progress?.phase).toBe('error'),{timeout:2500});
+  expect(hook.result.current.progress?.error).toContain('http://192.168.1.2:1421/catalog');
+  expect(hook.result.current.progress?.error).toContain('Failed to fetch');
+});

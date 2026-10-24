@@ -11,6 +11,8 @@ import type { ResourceCatalog } from './map/resourceCatalog';
 import { useSync } from './sync/useSync';
 import { ConnectionPanel } from './components/connection/ConnectionPanel';
 import { useResourceCatalog } from './map/useResourceCatalog';
+import { ResourceStatus } from './map/ResourceStatus';
+import type { ResourceProgress } from './map/resourceProgress';
 import '@ionic/react/css/core.css';
 import '@ionic/react/css/normalize.css';
 import '@ionic/react/css/structure.css';
@@ -36,7 +38,7 @@ function DisplayApp({ sync }: { sync: Sync }) {
   const resources = useResourceCatalog('127.0.0.1', true, true);
   const catalog = resources.catalog;
   return <IonPage className="display-page"><IonContent className="display-content" scrollY={false} scrollX={false}>
-    {catalog ? <MapStage state={sync.state} interactive={false} onChange={sync.update} catalog={catalog} tileHost="127.0.0.1" /> : <div className="display-status">{resources.message || '正在准备地图资源…'}</div>}
+    {catalog ? <MapStage state={sync.state} interactive={false} onChange={sync.update} catalog={catalog} tileHost="127.0.0.1" /> : <ResourceStatus message={resources.message} progress={resources.progress} />}
   </IonContent></IonPage>;
 }
 
@@ -51,13 +53,13 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
   // 只由当前路由发布页面状态；缓存中的旧页面不会回写自己的页面 ID。
   useEffect(() => { if (pageId) update({ page: pageId, comparison: pageId === 'comparison' }); }, [pageId, update]);
   return <IonRouterOutlet>
-    <Route exact path="/" render={() => <MapPage pageId="comparison" state={sync.state} update={sync.update} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} />} />
-    <Route exact path="/map/:pageId" render={({ match }) => <MapPage key={match.params.pageId} pageId={match.params.pageId} state={sync.state} update={sync.update} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} />} />
+    <Route exact path="/" render={() => <MapPage pageId="comparison" state={sync.state} update={sync.update} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} progress={resources.progress} />} />
+    <Route exact path="/map/:pageId" render={({ match }) => <MapPage key={match.params.pageId} pageId={match.params.pageId} state={sync.state} update={sync.update} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} progress={resources.progress} />} />
     <Route exact path="/settings" render={() => <ConnectionPanel value={sync.connection} onSave={sync.configure} status={sync.status} displays={sync.peers.displays} error={sync.error} homePath={`/${route.search}`} />} />
   </IonRouterOutlet>;
 }
 
-function MapPage({ state, update, pageId, connected, tileHost, catalog, resourceMessage }: { state: Sync['state']; update: Sync['update']; pageId: string; connected: boolean; tileHost: string; catalog: ResourceCatalog | null; resourceMessage: string }) {
+function MapPage({ state, update, pageId, connected, tileHost, catalog, resourceMessage, progress }: { state: Sync['state']; update: Sync['update']; pageId: string; connected: boolean; tileHost: string; catalog: ResourceCatalog | null; resourceMessage: string; progress?: ResourceProgress | null }) {
   const router = useIonRouter();
   const [mapActive, setMapActive] = useState(false);
   useIonViewDidEnter(() => setMapActive(true), []);
@@ -74,6 +76,6 @@ function MapPage({ state, update, pageId, connected, tileHost, catalog, resource
       </>}
       <IonButtons slot="end"><IonButton fill="clear" aria-label="打开设置" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}><IonIcon slot="icon-only" icon={settingsOutline} /></IonButton></IonButtons>
     </IonToolbar></IonHeader>
-    <IonContent className="controller-content" scrollY={false} scrollX={false}><main className="map-frame">{connected && catalog ? <MapStage state={state} interactive active={mapActive} onChange={update} pageId={pageId} tileHost={tileHost} catalog={catalog} /> : connected ? <div className="display-status">{resourceMessage || '已连接，正在准备地图资源…'}</div> : <IonButton className="connection-required" fill="clear" expand="full" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}>连接 Windows 大屏</IonButton>}</main></IonContent>
+    <IonContent className="controller-content" scrollY={false} scrollX={false}><main className="map-frame">{connected && catalog ? <MapStage state={state} interactive active={mapActive} onChange={update} pageId={pageId} tileHost={tileHost} catalog={catalog} /> : connected ? <ResourceStatus message={resourceMessage} progress={progress} /> : <IonButton className="connection-required" fill="clear" expand="full" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}>连接 Windows 大屏</IonButton>}</main></IonContent>
   </IonPage>;
 }

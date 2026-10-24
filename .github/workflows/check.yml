@@ -52,6 +52,7 @@ jobs:
           $env:E2E_NATIVE_BINARY = "$PWD/tests/native/target/debug/exhibition-resource-test-server.exe"
           $env:VIPS_BIN = "$PWD/src-tauri/tools/vips/bin/vips.exe"
           node scripts/check-native-originals.mjs
+          node scripts/check-resource-progress.mjs
       - run: pnpm tauri build --bundles nsis
       - name: 安装 Windows 成品并测试 iPad 控制端连接与图片加载
         shell: pwsh
@@ -96,6 +97,7 @@ jobs:
         run: |
           export E2E_NATIVE_BINARY="$PWD/tmp/native-test-target/debug/exhibition-resource-test-server"
           node scripts/check-native-originals.mjs
+          node scripts/check-resource-progress.mjs
       - name: WebKit iPad 控制端端到端测试
         run: |
           pnpm build
