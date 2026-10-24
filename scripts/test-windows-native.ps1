@@ -3,6 +3,7 @@ $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 Set-Location $root
 $install=Join-Path $root 'tmp/windows-e2e/install'
+& (Join-Path $PSScriptRoot 'check-windows-manifest.ps1') -ExecutablePath $Installer
 New-Item -ItemType Directory -Force $install | Out-Null
 New-NetFirewallRule -Name 'Exhibition-CI-Old-Deny' -DisplayName 'Exhibition CI old deny' -Program (Join-Path $install 'tauronic.exe') -Direction Inbound -Action Block -Profile Any | Out-Null
 $setup=Start-Process (Resolve-Path $Installer) -ArgumentList '/S',"/D=$install" -PassThru

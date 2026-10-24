@@ -8,10 +8,18 @@
   Pop $0
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="ExhibitionApp-Local-TCP" dir=in action=allow program="$INSTDIR\tauronic.exe" protocol=TCP localport=1421,8787 remoteip=localsubnet profile=private,public'
   Pop $0
+  StrCmp $0 "0" +4
+  DetailPrint "无法创建展厅局域网 TCP 规则：$0"
+  SetErrorLevel 1
+  Quit
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="ExhibitionApp-Local-Discovery" program="$INSTDIR\tauronic.exe"'
   Pop $0
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="ExhibitionApp-Local-Discovery" dir=in action=allow program="$INSTDIR\tauronic.exe" protocol=UDP localport=8789 remoteip=localsubnet profile=private,public'
   Pop $0
+  StrCmp $0 "0" +4
+  DetailPrint "无法创建展厅局域网发现规则：$0"
+  SetErrorLevel 1
+  Quit
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL

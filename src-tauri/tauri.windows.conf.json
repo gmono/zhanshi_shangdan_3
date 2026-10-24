@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "windows": {"nsis": {"installerHooks": "../scripts/windows-installer-hooks.nsh"}},
+    "windows": {"nsis": {"installMode": "perMachine", "installerHooks": "../scripts/windows-installer-hooks.nsh"}},
     "resources": {"tools/vips/":"tools/vips/"}
   }
 }
