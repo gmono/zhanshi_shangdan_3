@@ -1,4 +1,5 @@
 import XCTest
+import CoreGraphics
 
 final class ConnectionUITests: XCTestCase {
     func testConnectAndLoadOriginalTiles() throws {
@@ -44,9 +45,38 @@ final class ConnectionUITests: XCTestCase {
     }
 
     private func capture(_ app: XCUIApplication, _ name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+        var screenshot = app.screenshot()
+        let deadline = Date().addingTimeInterval(20)
+        while !hasImagePixels(screenshot) && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.2)
+            screenshot = app.screenshot()
+        }
+        let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+        XCTAssertTrue(hasImagePixels(screenshot), "已读取瓦片但界面未画出测试原图：\(name)")
+    }
+
+    private func hasImagePixels(_ screenshot: XCUIScreenshot) -> Bool {
+        guard let image = screenshot.image.cgImage,
+              let context = CGContext(data: nil, width: image.width, height: image.height,
+                  bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                  space: CGColorSpaceCreateDeviceRGB(),
+                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue),
+              let raw = context.data else { return false }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: CGFloat(image.width), height: CGFloat(image.height)))
+        let pixels = raw.assumingMemoryBound(to: UInt8.self)
+        var samples = 0
+        var colored = 0
+        for y in stride(from: image.height / 6, to: image.height * 5 / 6, by: 8) {
+            for x in stride(from: image.width / 20, to: image.width * 19 / 20, by: 8) {
+                let offset = (y * image.width + x) * 4
+                let channels = [Int(pixels[offset]), Int(pixels[offset + 1]), Int(pixels[offset + 2])]
+                samples += 1
+                if channels.max()! - channels.min()! > 50 { colored += 1 }
+            }
+        }
+        return samples > 0 && Double(colored) / Double(samples) > 0.01
     }
 }
