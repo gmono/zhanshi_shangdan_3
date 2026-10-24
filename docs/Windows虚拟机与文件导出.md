@@ -59,3 +59,7 @@ Windows 地图资源约定：在 Windows 文档目录建立 `展厅App/地图资
 - 下载任务已启动为整个文件夹，客户端当前并发5个任务；`.baiduyun.p.downloading` 文件表示仍在下载，不能提前改名或导入。
 - 已完成文件和像素尺寸记录在项目临时文件 `tmp/baidu-image-inventory.json`，下载过程不写入 Git。
 - 用户另提供的 `456.jpg` 原图为 49969×27750、约421MB，已复制为 `assets/source-images/single-maps/map-1.jpg` 至 `map-5.jpg`；五份 SHA-256 一致。图片目录被 Git 忽略，不提交。
+
+
+## 本次客户图片原文件名适配
+使用网盘原始 序厅-遥感图 文件夹和 456.jpg，不需要用户重命名。确切目录见 scripts/资源命名说明.md；此前按年份或图1至图5改名的说明作废。

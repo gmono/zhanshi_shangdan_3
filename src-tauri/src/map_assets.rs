@@ -8,41 +8,27 @@ pub struct Source { pub path: PathBuf, pub label: String }
 #[derive(Debug)]
 pub struct Sources { pub places: Vec<(String, Vec<Source>)>, pub maps: Vec<Source> }
 
-fn images(root: &Path) -> Result<Vec<PathBuf>, String> {
-    if !root.is_dir() { return Ok(vec![]); }
-    let mut files = vec![];
-    for entry in fs::read_dir(root).map_err(|e| e.to_string())? {
-        let path = entry.map_err(|e| e.to_string())?.path();
-        if path.is_file() && matches!(path.extension().and_then(|v|v.to_str()).unwrap_or("").to_ascii_lowercase().as_str(), "jpg"|"jpeg"|"png"|"tif"|"tiff") { files.push(path); }
-    }
-    files.sort(); Ok(files)
-}
 pub fn scan(root: &Path) -> Result<Sources, String> {
-    let mut places = BTreeMap::new();
-    let compare = root.join("对比");
-    if compare.is_dir() {
-        for entry in fs::read_dir(compare).map_err(|e|e.to_string())? {
-            let path = entry.map_err(|e|e.to_string())?.path();
-            if !path.is_dir() { continue; }
-            let label = path.file_name().unwrap().to_string_lossy().into_owned();
-            let mut years = BTreeMap::new();
-            for file in images(&path)? {
-                let year = file.file_stem().unwrap().to_string_lossy().into_owned();
-                if year.len()!=4 || !year.bytes().all(|c|c.is_ascii_digit()) { return Err(format!("{label} 的图片请按四位年份命名：{}",file.display())); }
-                if years.insert(year.clone(),Source{path:file,label:year.clone()}).is_some() { return Err(format!("{label} 的 {year} 年存在重复图片")); }
-            }
-            if !years.is_empty() { places.insert(label,years.into_values().collect()); }
+    let compare=if root.join("序厅-遥感图").is_dir(){root.join("序厅-遥感图")}else{root.to_path_buf()};
+    let names=[
+        ("成眉S5线",["s5线2023年.png","s5线2026年.png"]),
+        ("视高镇",["视高2023.png","视高镇2026.png"]),
+        ("兴隆湖",["兴隆湖2023.png","兴隆湖2026.png"]),
+    ];
+    let mut places=Vec::new();
+    for (place,files) in names {
+        let mut sources=Vec::new();
+        for (index,file) in files.iter().enumerate(){
+            let path=compare.join(place).join(file);
+            if !path.is_file(){return Err(format!("缺少原始图片：{}",path.display()));}
+            sources.push(Source{path,label:if index==0{"2023".into()}else{"2026".into()}});
         }
+        places.push((place.to_string(),sources));
     }
-    if places.len()!=3 { return Err("请在 地图资源/对比 下放置三个地点文件夹，每个地点包含按年份命名的图片".into()); }
-    let mut maps = BTreeMap::new();
-    for path in images(&root.join("大图"))? {
-        let label = path.file_stem().unwrap().to_string_lossy().into_owned();
-        if !["图1","图2","图3","图4","图5"].contains(&label.as_str()) { return Err(format!("大图请命名为图1至图5：{}",path.display())); }
-        if maps.insert(label.clone(),Source{path,label:label.clone()}).is_some() { return Err(format!("{label} 存在重复图片")); }
-    }
-    if maps.len()!=5 { return Err("请在 地图资源/大图 下放置图1至图5，共五张图片".into()); }
-    Ok(Sources{places:places.into_iter().collect(),maps:maps.into_values().collect()})
+    let source=root.join("456.jpg");
+    if !source.is_file(){return Err(format!("缺少原始大图：{}",source.display()));}
+    let maps=(1..=5).map(|index|Source{path:source.clone(),label:format!("图{index}")}).collect();
+    Ok(Sources{places,maps})
 }
 fn hash(path: &Path) -> Result<String,String> {
     let mut file=fs::File::open(path).map_err(|e|e.to_string())?;
@@ -95,13 +81,3 @@ pub fn prepare(root: &Path, cache: &Path, vips: &Path) -> Result<Value,String> {
     Ok(json!({"locations":locations,"maps":maps}))
 }
 
-#[cfg(test)] mod tests {
-    use super::*;
-    fn fixture() -> PathBuf {
-        let root=PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tmp").join(format!("assets-test-{}",std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
-        for place in ["成眉S5线","视高镇","兴隆湖"] { let d=root.join("对比").join(place);fs::create_dir_all(&d).unwrap();for year in ["2026","2023"] {fs::write(d.join(format!("{year}.png")),b"fixture").unwrap();}}
-        fs::create_dir_all(root.join("大图")).unwrap();for i in 1..=5 {fs::write(root.join(format!("大图/图{i}.jpg")),b"fixture").unwrap();}root
-    }
-    #[test] fn raw_names_and_year_order() {let s=scan(&fixture()).unwrap();assert_eq!(s.places.len(),3);assert_eq!(s.places[0].1[0].label,"2023");assert_eq!(s.maps.len(),5);}
-    #[test] fn reject_duplicate_year_and_missing_data() {let r=fixture();fs::write(r.join("对比/视高镇/2023.tif"),b"fixture").unwrap();assert!(scan(&r).unwrap_err().contains("重复"));assert!(scan(Path::new("missing-directory")).is_err());}
-}

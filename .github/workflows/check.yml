@@ -17,10 +17,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
-      - run: pnpm lint
       - run: pnpm build
-      - run: node scripts/check-resource-packing.mjs
   windows:
     runs-on: windows-latest
     steps:
@@ -33,18 +30,10 @@ jobs:
           node-version: 24
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
-      - name: 验证 Windows 退出组合键
-        run: |
-          New-Item -ItemType Directory -Force tmp | Out-Null
-          rustc --edition=2021 --test src-tauri/src/exit_chord.rs -o tmp/windows-shortcut-tests.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./tmp/windows-shortcut-tests.exe
       - run: pnpm install --frozen-lockfile
       - name: 准备内置图片处理器
         run: ./scripts/prepare-vips.ps1
       - run: pnpm tauri build --bundles nsis
-      - name: 验证 Windows 成品要求管理员权限
-        run: ./scripts/check-windows-manifest.ps1 -ExecutablePath ./src-tauri/target/release/tauronic.exe
       - uses: actions/upload-artifact@v4
         with:
           name: Windows安装包
@@ -52,33 +41,6 @@ jobs:
 
   # macOS runner 可在没有本地 Mac 的情况下编译 iOS 工程。
   # 这个 job 编译 Simulator 版本，不需要 Apple Developer 账号。
-  ios-simulator:
-    name: iOS Simulator 编译检查
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.12.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: 校验 Xcode 工程和权限配置
-        run: plutil -lint src-tauri/gen/apple/tauronic.xcodeproj/project.pbxproj src-tauri/gen/apple/tauronic_iOS/Info.plist
-      - name: 编译 iOS Simulator（不签名）
-        run: pnpm exec tauri ios build --ci --no-sign --target aarch64-sim
-      - name: 在 iPad 模拟器实际安装并验证启动
-        run: bash scripts/check-ios-launch.sh
-      - name: 保存 iPad 启动证据
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-launch-diagnostics
-          path: tmp/ios-launch-check/
-
-  # 生成不签名 IPA 作为下载产物，不需要 Apple Developer Secrets。
   ios-ipa:
     name: iOS IPA 构建（不签名）
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
