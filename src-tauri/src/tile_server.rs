@@ -9,14 +9,16 @@ pub struct Assets {pub catalog:Arc<RwLock<Result<Value,String>>>,pub progress:Ar
 
 pub async fn run(root:PathBuf,cache:PathBuf,vips:PathBuf,bind:&str) -> Result<(),String> {
     let listener=tokio::net::TcpListener::bind(bind).await.map_err(|e|format!("地图服务启动失败：{e}"))?;
-    std::fs::create_dir_all(&root).map_err(|e|e.to_string())?;
-    std::fs::create_dir_all(&cache).map_err(|e|e.to_string())?;
-    let state=Assets{catalog:Arc::new(RwLock::new(Err("正在准备地图资源".into()))),progress:Arc::new(RwLock::new(json!({"phase":"starting","completed":0,"total":11,"elapsedMs":0,"message":"正在启动地图处理服务"})))};
+    let state=Assets{catalog:Arc::new(RwLock::new(Err("正在准备地图资源".into()))),progress:Arc::new(RwLock::new(json!({"phase":"starting","completed":0,"total":11,"elapsedMs":0,"sourcePath":root,"processorPath":vips,"message":"正在启动地图处理服务"})))};
     let worker=state.clone();let worker_cache=cache.clone();
     tokio::spawn(async move {
       loop {
         let source=root.clone();let cache=worker_cache.clone();let processor=vips.clone();let progress=worker.progress.clone();
-        let result=tokio::task::spawn_blocking(move||crate::map_assets::prepare_with_progress(&source,&cache,&processor,&|value|{*progress.write().unwrap()=value;})).await.unwrap_or_else(|error|Err(format!("地图处理任务异常：{error}")));
+        let result=tokio::task::spawn_blocking(move||{
+            std::fs::create_dir_all(&source).map_err(|e|format!("无法创建地图资源目录：{}\n系统错误：{e}",source.display()))?;
+            std::fs::create_dir_all(&cache).map_err(|e|format!("无法创建地图缓存目录：{}\n系统错误：{e}",cache.display()))?;
+            crate::map_assets::prepare_with_progress(&source,&cache,&processor,&|value|{*progress.write().unwrap()=value;})
+        }).await.unwrap_or_else(|error|Err(format!("地图处理任务异常：{error}")));
         if let Err(error)=&result {
             let _=std::fs::write(worker_cache.join("资源处理记录.txt"),error);
             let mut progress=worker.progress.write().unwrap();

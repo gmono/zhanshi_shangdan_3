@@ -15,7 +15,6 @@ use tauri::State;
 fn start_tile_server(app:tauri::AppHandle) -> Result<(),String> {
     let exe=std::env::current_exe().map_err(|e|e.to_string())?;
     let root=map_assets::resource_root(&exe,std::env::var_os("EXHIBITION_RESOURCE_DIR").as_deref())?;
-    std::fs::create_dir_all(&root).map_err(|e|e.to_string())?;
     let vips=if let Some(path)=std::env::var_os("EXHIBITION_VIPS") {std::path::PathBuf::from(path)}
         else {app.path().resource_dir().map_err(|e|e.to_string())?.join("tools/vips/bin/vips.exe")};
     let cache=root.join(".cache");

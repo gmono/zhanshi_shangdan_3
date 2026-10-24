@@ -9,14 +9,19 @@ const root=await mkdtemp(join(base,'originals-'));const events=[];let child;
 const binary=process.env.E2E_NATIVE_BINARY;if(!binary)throw Error('缺少 E2E_NATIVE_BINARY');
 const vips=process.env.VIPS_BIN||'vips';
 const delay=ms=>new Promise(ok=>setTimeout(ok,ms));
-function start(processor){child=spawn(resolve(binary),[root,processor,'127.0.0.1:1437','8797'],{stdio:'inherit'});}
+function start(processor,source=root){child=spawn(resolve(binary),[source,processor,'127.0.0.1:1437','8797'],{stdio:'inherit'});}
 async function stop(){if(child&&child.exitCode===null)await new Promise(ok=>{child.once('exit',ok);child.kill()});}
 async function poll(test){for(let i=0;i<600;i++){
+  if(child?.exitCode!==null)throw Error(`资源服务异常退出，无法向界面报告错误：${child?.exitCode}`);
   try{const r=await fetch('http://127.0.0.1:1437/progress');const p=await r.json();events.push(p);if(test(p))return p;}catch{}
   await delay(100);
 }throw Error('处理进度未达到预期状态');}
 const report={checks:{}};
 try{
+  const blocked=join(base,'无法作为目录的文件');await writeFile(blocked,'not a directory');
+  start(vips,blocked);
+  const directoryError=await poll(p=>p.phase==='error');assert.ok(directoryError.error.includes(blocked));report.checks.directoryFailureVisible=true;
+  await stop();
   start(vips);
   const missing=await poll(p=>p.phase==='error');assert.match(missing.error,/缺少原始图片/);assert.ok(missing.sourcePath);assert.ok(missing.logPath);report.checks.missingFileVisible=true;
   await stop();
