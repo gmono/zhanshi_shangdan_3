@@ -11,7 +11,9 @@ async fn main() {
     let args:Vec<String>=std::env::args().collect();
     assert!(args.len()>=3,"用法：exhibition-resource-test-server 原图目录 vips路径 [HTTP监听地址] [WebSocket端口]");
     let root=std::path::PathBuf::from(&args[1]);
+    let bind=args.get(3).map(String::as_str).unwrap_or("127.0.0.1:1431");
+    let address:std::net::SocketAddr=bind.parse().unwrap();
     let handle=std::sync::Arc::new(relay::RelayHandle::default());
-    relay::start(handle,args.get(4).map(|v|v.parse().unwrap()).unwrap_or(8787)).await.unwrap();
-    tile_server::run(root.clone(),root.join(".cache"),std::path::PathBuf::from(&args[2]),args.get(3).map(String::as_str).unwrap_or("127.0.0.1:1431")).await.unwrap();
+    relay::start_on(handle,(address.ip(),args.get(4).map(|v|v.parse().unwrap()).unwrap_or(8787)).into()).await.unwrap();
+    tile_server::run(root.clone(),root.join(".cache"),std::path::PathBuf::from(&args[2]),bind).await.unwrap();
 }

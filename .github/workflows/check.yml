@@ -32,11 +32,24 @@ jobs:
           node-version: 24
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+            tests/native -> target
+          cache-on-failure: true
       - run: pnpm install --frozen-lockfile
       - name: 原图读取与缓存回归测试
         run: cargo test --manifest-path tests/native/Cargo.toml --locked
       - name: 准备内置图片处理器
         run: ./scripts/prepare-vips.ps1
+      - name: 空安装目录放入原图后就绪，替换原图后重建缓存
+        shell: pwsh
+        run: |
+          cargo build --manifest-path tests/native/Cargo.toml --locked
+          $env:E2E_NATIVE_BINARY = "$PWD/tests/native/target/debug/exhibition-resource-test-server.exe"
+          $env:VIPS_BIN = "$PWD/src-tauri/tools/vips/bin/vips.exe"
+          node scripts/check-native-originals.mjs
       - run: pnpm tauri build --bundles nsis
       - name: 安装 Windows 成品并测试 iPad 控制端连接与图片加载
         shell: pwsh
@@ -69,10 +82,18 @@ jobs:
           node-version: 24
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tests/native -> ../../tmp/native-test-target
+          cache-on-failure: true
       - run: pnpm install --frozen-lockfile
       - run: brew install vips xcodegen
       - name: 编译生产资源与同步服务的测试入口
         run: CARGO_TARGET_DIR="$PWD/tmp/native-test-target" cargo build --manifest-path tests/native/Cargo.toml --locked
+      - name: 原图只读、不同尺寸和同名替换回归测试
+        run: |
+          export E2E_NATIVE_BINARY="$PWD/tmp/native-test-target/debug/exhibition-resource-test-server"
+          node scripts/check-native-originals.mjs
       - name: WebKit iPad 控制端端到端测试
         run: |
           pnpm build

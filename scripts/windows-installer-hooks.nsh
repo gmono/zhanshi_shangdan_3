@@ -1,6 +1,9 @@
 ; 只为本应用创建局域网访问规则，不关闭或重设系统防火墙。
 !macro NSIS_HOOK_POSTINSTALL
   CreateDirectory "$INSTDIR\地图资源"
+  ; 升级安装时清除仅属于本程序的旧入站拒绝规则，避免旧 Block 覆盖新 Allow。
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name=all program="$INSTDIR\tauronic.exe" dir=in'
+  Pop $0
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="ExhibitionApp-Local-TCP" program="$INSTDIR\tauronic.exe"'
   Pop $0
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="ExhibitionApp-Local-TCP" dir=in action=allow program="$INSTDIR\tauronic.exe" protocol=TCP localport=1421,8787 remoteip=localsubnet profile=private,public'

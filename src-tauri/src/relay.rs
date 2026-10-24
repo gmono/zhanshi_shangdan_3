@@ -10,9 +10,14 @@ type Tx = mpsc::UnboundedSender<Message>;
 #[derive(Default)] pub struct RelayHandle { task: Mutex<Option<JoinHandle<()>>> }
 
 pub async fn start(handle: Arc<RelayHandle>, port: u16) -> Result<String, String> {
+    start_on(handle,([0,0,0,0],port).into()).await
+}
+
+pub async fn start_on(handle:Arc<RelayHandle>, address:std::net::SocketAddr) -> Result<String,String> {
+    let port=address.port();
     let mut current = handle.task.lock().await;
     if current.is_some() { return Ok(format!("ws://0.0.0.0:{port}")); }
-    let listener = TcpListener::bind(("0.0.0.0", port)).await.map_err(|e| format!("同步服务启动失败: {e}"))?;
+    let listener = TcpListener::bind(address).await.map_err(|e| format!("同步服务启动失败: {e}"))?;
     let shared = Arc::new(Mutex::new(Relay::default()));
     let task = tokio::spawn(accept_loop(listener, shared));
     *current = Some(task);
