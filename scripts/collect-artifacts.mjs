@@ -1,7 +1,7 @@
-import { copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -9,6 +9,14 @@ async function filesBelow(root) {
   const entries = await readdir(root, { withFileTypes: true });
   const files = await Promise.all(entries.map(entry => entry.isDirectory() ? filesBelow(join(root, entry.name)) : [join(root, entry.name)]));
   return files.flat();
+}
+async function dirSummary(root) {
+  try {
+    const files = (await filesBelow(root)).filter(file => !file.split(sep).includes('.cache'));
+    let bytes = 0;
+    for (const file of files) bytes += (await stat(file)).size;
+    return { path: '地图资源', files: files.length, bytes };
+  } catch { return null; }
 }
 export async function collectArtifacts({ commit, sourceRoot, outDir }) {
   if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error('需要完整的 Git 提交号');
@@ -29,7 +37,7 @@ export async function collectArtifacts({ commit, sourceRoot, outDir }) {
     { source: ipa, file: '展厅App.ipa', bytes: ipaBytes },
     { source: windows[0], file: '展厅App-Windows-x64-setup.exe', bytes: winBytes },
   ];
-  const manifest = { commit, collectedAt: new Date().toISOString(), artifacts: entries.map(({ file, bytes }) => ({ file, bytes: bytes.length, sha256: digest(bytes) })) };
+  const manifest = { commit, collectedAt: new Date().toISOString(), resources: await dirSummary(join(outDir, '地图资源')), artifacts: entries.map(({ file, bytes }) => ({ file, bytes: bytes.length, sha256: digest(bytes) })) };
   // 所有来源校验通过后才开始写入交付目录；不删除用户的其他文件。
   await mkdir(outDir, { recursive: true });
   const staging = join(outDir, `.staging-${short}`);
