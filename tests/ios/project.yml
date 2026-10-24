@@ -1,7 +1,7 @@
 name: ExhibitionConnection
 options:
-  projectFormat: xcode15_3
-  xcodeVersion: '16.0'
+  projectFormat: xcode14_0
+  xcodeVersion: '14.0'
   deploymentTarget:
     iOS: '15.0'
 settings:

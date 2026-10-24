@@ -1,5 +1,7 @@
 name: tauronic
 options:
+  projectFormat: xcode14_0
+  xcodeVersion: '14.0'
   bundleIdPrefix: com.tauronic.kit
   deploymentTarget:
     iOS: 13.0
@@ -55,23 +57,7 @@ targets:
         NSLocalNetworkUsageDescription: 用于连接展厅大屏，同步地图视角和三图分割线。
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-          NSExceptionDomains:
-            "10.0.0.0/8":
-              NSExceptionAllowsInsecureHTTPLoads: true
-            "172.16.0.0/12":
-              NSExceptionAllowsInsecureHTTPLoads: true
-            "192.168.0.0/16":
-              NSExceptionAllowsInsecureHTTPLoads: true
-            "169.254.0.0/16":
-              NSExceptionAllowsInsecureHTTPLoads: true
-            "127.0.0.1":
-              NSExceptionAllowsInsecureHTTPLoads: true
-            "::1":
-              NSExceptionAllowsInsecureHTTPLoads: true
-            "fc00::/7":
-              NSExceptionAllowsInsecureHTTPLoads: true
-            "fe80::/10":
-              NSExceptionAllowsInsecureHTTPLoads: true
+          NSAllowsArbitraryLoadsInWebContent: true
     entitlements:
       path: tauronic_iOS/tauronic_iOS.entitlements
       properties:

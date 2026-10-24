@@ -20,6 +20,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm lint
+      - run: node scripts/check-xcode-format.mjs
       - run: pnpm build
   windows:
     runs-on: windows-latest

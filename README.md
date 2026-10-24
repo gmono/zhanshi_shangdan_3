@@ -109,6 +109,8 @@ pnpm build:windows
 
 需要 **macOS + Xcode + Apple 开发者签名**。保留模板原生工程名 `tauronic` 与包标识 `com.tauronic.kit` 以避免破坏生成工程引用；正式发布前应统一替换成自己的标识并重新初始化工程。
 
+工程文件格式固定为 `objectVersion = 56`、`compatibilityVersion = "Xcode 14.0"`。应用和 UI 测试的 XcodeGen 配置都必须使用 `projectFormat: xcode14_0`，不能随生成工具升级工程格式。CI 通过 `node scripts/check-xcode-format.mjs` 检查已有工程和临时生成的测试工程。
+
 ```bash
 pnpm install
 pnpm tauri ios init

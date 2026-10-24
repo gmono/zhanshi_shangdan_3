@@ -25,6 +25,7 @@ codesign --force --sign - "$app"
 xcrun simctl install "$device" "$app"
 cp tests/ios/*.swift tests/ios/project.yml "$report/"
 xcodegen generate --spec "$report/project.yml" --project "$report"
+node scripts/check-xcode-format.mjs "$report/ExhibitionConnection.xcodeproj/project.pbxproj"
 xcodebuild test -project "$report/ExhibitionConnection.xcodeproj" -scheme ExhibitionConnection -destination "platform=iOS Simulator,id=$device" -derivedDataPath "$report/DerivedData" -resultBundlePath "$report/Connection.xcresult" CODE_SIGN_IDENTITY=- | tee "$report/xctest.log"
 node --input-type=module - "$report" <<'EOF'
 import{readFileSync,writeFileSync}from'node:fs';
