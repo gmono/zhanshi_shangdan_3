@@ -45,6 +45,7 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
     await expect(page.locator('.inner-divider [role="slider"]')).toHaveCount(3);
   };
   await checkLayout();
+  for(const slider of await page.locator('.inner-divider [role="slider"]').all())await expect(slider).toHaveAttribute('aria-valuenow','0');
   const originalViewport=page.viewportSize()!;
   await page.setViewportSize({width:1194,height:834});
   await checkLayout();
@@ -53,6 +54,7 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
   await page.screenshot({path:`tmp/e2e/${test.info().project.name}-initial.png`});
   const catalog=await request.get(`http://${host}:1421/catalog`);expect(catalog.ok()).toBeTruthy();
   const body=await catalog.json();expect(body.locations[0].images[0].width).toBe(640);expect(body.locations[0].images[1].width).toBe(800);
+  for(const place of body.locations){expect(place.images[0].url).toContain('2023');expect(place.images[1].url).toContain('2026');}
   const observer=new WebSocket(`ws://${host}:8787`);const states:any[]=[];const envelopes:any[]=[];
   observer.on('message',b=>{const m=JSON.parse(String(b));envelopes.push(m);if(m.type==='snapshot'&&m.state)states.push(m.state);});
   await new Promise<void>((resolve,reject)=>{observer.once('open',()=>{observer.send(JSON.stringify({id:1,type:'hello',role:'display',room:'exhibition-main-room'}));resolve();});observer.once('error',reject);});

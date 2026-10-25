@@ -5,7 +5,7 @@ import TileLayer from 'ol/layer/Tile';
 import XYZ from 'ol/source/XYZ';
 import Zoomify from 'ol/source/Zoomify';
 import { defaults as interactions } from 'ol/interaction/defaults';
-import { mapConfig, initialState, locations, mapPages, evenSplits } from './config';
+import { mapConfig, initialState, locations, mapPages, evenSplits, leftEdgeSplits } from './config';
 import { SplitContainer } from './SplitContainer';
 import type { MapState, MapViewState } from '../sync/protocol.mjs';
 import type { ResourceCatalog, ImageResource } from './resourceCatalog';
@@ -24,9 +24,9 @@ export const MapStage = memo(function MapStage({ state, interactive, onChange, p
   return <div className={`map-stage ${interactive ? 'is-interactive' : 'display-map'}`} data-page={pageId} aria-label={comparison ? '地点与图片嵌套对比' : mapPage.label}>
     {comparison ? <SplitContainer splits={outer} interactive={false} label="地点" level="outer" onChange={quiet}>
       {places.map((place, placeIndex) => {
-        const inner = state.innerSplits?.[placeIndex]?.length === place.images.length - 1 ? state.innerSplits[placeIndex] : evenSplits(place.images.length);
+        const inner = state.innerSplits?.[placeIndex]?.length === place.images.length - 1 ? state.innerSplits[placeIndex] : leftEdgeSplits(place.images.length);
         return <SplitContainer key={place.id} splits={inner} interactive={interactive} label={`${place.label}图片`} level="inner" onChange={splits => {
-          const innerSplits = places.map((item, index) => index === placeIndex ? splits : state.innerSplits?.[index] || evenSplits(item.images.length));
+          const innerSplits = places.map((item, index) => index === placeIndex ? splits : state.innerSplits?.[index] || leftEdgeSplits(item.images.length));
           onChange({ innerSplits });
         }}>
           {place.images.map((resource, index) => <MapSurface key={resource.url + index} resource={resource} tileHost={tileHost} interactive={false} active={active} showErrors={interactive} fit camera={initialState} onChange={quiet} />)}

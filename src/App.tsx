@@ -6,7 +6,7 @@ import { Route, useLocation } from 'react-router-dom';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { getRole } from './platform/role';
 import { MapStage } from './map/MapStage';
-import { evenSplits } from './map/config';
+import { evenSplits, leftEdgeSplits } from './map/config';
 import { initialCamera } from './map/initialCamera';
 import type { ResourceCatalog } from './map/resourceCatalog';
 import { useSync } from './sync/useSync';
@@ -60,7 +60,7 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
     } : {}) });
     preparedPage.current = targetPage;
   }, [catalog, update]);
-  useEffect(() => { if (catalog) update({ outerSplits: evenSplits(catalog.locations.length), innerSplits: catalog.locations.map(p => evenSplits(p.images.length)) }); }, [catalog, update]);
+  useEffect(() => { if (catalog) update({ outerSplits: evenSplits(catalog.locations.length), innerSplits: catalog.locations.map(p => leftEdgeSplits(p.images.length)) }); }, [catalog, update]);
   const pageId = route.pathname === '/' ? 'comparison' : catalog?.maps.find(page => route.pathname === `/map/${page.id}`)?.id;
   // 只由当前路由发布页面状态；缓存中的旧页面不会回写自己的页面 ID。
   useLayoutEffect(() => {

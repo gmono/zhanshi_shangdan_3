@@ -21,8 +21,9 @@ export const mapConfig = {
 export const locations = catalog.locations;
 export const mapPages = catalog.maps;
 export const evenSplits = (count: number) => Array.from({ length: Math.max(0, count - 1) }, (_, i) => (i + 1) / count);
+export const leftEdgeSplits = (count: number) => Array.from({ length: Math.max(0, count - 1) }, () => 0);
 export const initialState: MapState = {
   center: (image ? [width / 2, -height / 2] : fromLonLat([120.155, 30.248])) as [number, number],
   zoom: image ? 3 : 12,
-  showPoints: false, page: 'comparison', comparison: true, outerSplits: evenSplits(locations.length), innerSplits: locations.map(place => evenSplits(place.images.length)), mapViews: {}, splits: [0.333, 0.667],
+  showPoints: false, page: 'comparison', comparison: true, outerSplits: evenSplits(locations.length), innerSplits: locations.map(place => leftEdgeSplits(place.images.length)), mapViews: {}, splits: [0.333, 0.667],
 };
