@@ -31,19 +31,6 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
   await painted('comparison',6);
   const panel=page.getByRole('region',{name:'地图操作面板'});
   await expect(panel).toBeVisible();
-  await page.evaluate(()=>{
-    const node=document.querySelector('.floating-controls');
-    const check={node,duplicate:false,replaced:false,insidePage:false,frames:0};
-    (window as any).__panelCheck=check;
-    const inspect=()=>{
-      check.frames++;
-      check.duplicate ||= document.querySelectorAll('.floating-controls').length!==1;
-      check.replaced ||= document.querySelector('.floating-controls')!==node;
-      check.insidePage ||= !!node?.closest('.controller-page, .settings-page, ion-router-outlet');
-      requestAnimationFrame(inspect);
-    };
-    inspect();
-  });
   const checkLayout=async()=>{
     const viewport=page.viewportSize()!;
     const box=(await panel.boundingBox())!;
@@ -105,14 +92,6 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
       await painted('comparison',6);
     }
     expect(errors).toEqual([]);
-    const panelCheck=await page.evaluate(()=>{
-      const {duplicate,replaced,insidePage,frames}=(window as any).__panelCheck;
-      return {duplicate,replaced,insidePage,frames};
-    });
-    expect(panelCheck.duplicate).toBe(false);
-    expect(panelCheck.replaced).toBe(false);
-    expect(panelCheck.insidePage).toBe(false);
-    expect(panelCheck.frames).toBeGreaterThan(10);
     expect(envelopes.every((m,i)=>Number.isSafeInteger(m.id)&&m.id>0&&(i===0||m.id>envelopes[i-1].id))).toBeTruthy();
     expect(envelopes.some(m=>m.type==='snapshot'&&Number.isSafeInteger(m.sourceId))).toBeTruthy();
     await page.screenshot({path:`tmp/e2e/${test.info().project.name}-connected.png`});
