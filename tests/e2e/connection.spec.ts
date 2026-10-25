@@ -65,9 +65,10 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
       await painted(`map-${i}`,1);
       const initialCamera=structuredClone(states.at(-1).mapViews[`map-${i}`]);
       const target=page.locator(`.map-stage[data-page="map-${i}"] .map-target`);
+      await expect.poll(async()=>Math.abs((await target.boundingBox())!.x)).toBeLessThan(1);
       const bounds=(await target.boundingBox())!;
       await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
-      await page.mouse.wheel(0,-700);
+      await target.dblclick();
       await expect.poll(()=>states.at(-1)?.mapViews?.[`map-${i}`]?.zoom).toBeGreaterThan(initialCamera.zoom+0.2);
       await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
       await page.mouse.down();
@@ -75,6 +76,7 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
       await page.mouse.up();
       await page.getByRole('button',{name:'返回',exact:true}).click();
       await painted('comparison',6);
+      await expect.poll(()=>states.at(-1)?.page).toBe('comparison');
       const entryStart=states.length;
       await page.getByRole('button',{name:`图${i}`,exact:true}).click();
       await expect(page.locator(`.map-stage[data-page="map-${i}"]`)).toBeVisible();
@@ -91,5 +93,8 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
     expect(envelopes.every((m,i)=>Number.isSafeInteger(m.id)&&m.id>0&&(i===0||m.id>envelopes[i-1].id))).toBeTruthy();
     expect(envelopes.some(m=>m.type==='snapshot'&&Number.isSafeInteger(m.sourceId))).toBeTruthy();
     await page.screenshot({path:`tmp/e2e/${test.info().project.name}-connected.png`});
-  }finally{observer.terminate();}
+  }finally{
+    await test.info().attach('同步消息序列',{body:JSON.stringify(envelopes,null,2),contentType:'application/json'});
+    observer.terminate();
+  }
 });
