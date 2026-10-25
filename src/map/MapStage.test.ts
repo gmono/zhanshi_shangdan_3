@@ -12,15 +12,22 @@ const maps = vi.hoisted(() => [] as Array<{
   view: View;
   setTarget: ReturnType<typeof vi.fn>;
   updateSize: ReturnType<typeof vi.fn>;
+  renderSync: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
   events: Record<string, () => void>;
+  attachedCameras: Array<{ center: number[] | undefined; zoom: number | undefined }>;
 }>);
 vi.mock('ol/Map', () => ({ default: class {
   target: HTMLElement | undefined;
   view: View;
   events: Record<string, () => void> = {};
-  setTarget = vi.fn((target: HTMLElement | undefined) => { this.target = target; });
+  attachedCameras: Array<{ center: number[] | undefined; zoom: number | undefined }> = [];
+  setTarget = vi.fn((target: HTMLElement | undefined) => {
+    if (target) this.attachedCameras.push({ center: this.view.getCenter()?.slice(), zoom: this.view.getZoom() });
+    this.target = target;
+  });
   updateSize = vi.fn();
+  renderSync = vi.fn();
   dispose = vi.fn();
   constructor(options: { target?: HTMLElement; view: View }) { this.target = options.target; this.view = options.view; maps.push(this); }
   on(event: string, callback: () => void) { this.events[event] = callback; }
@@ -43,6 +50,7 @@ it('离场暂停渲染和发布，返回复用原地图及其缓存', () => {
   const screen = render(createElement(MapStage, props));
   const map = maps[0];
   expect(map.target).toBeInstanceOf(HTMLElement);
+  act(() => map.view.setZoom(4));
   act(() => map.events.moveend());
   expect(onChange).toHaveBeenCalled();
   onChange.mockClear();
@@ -66,4 +74,46 @@ it('缓存页不跟随无关相机更新，重新进入再应用该页最新状�
   screen.rerender(createElement(MapStage, { ...next, active: true }));
   expect(maps[0].view.getZoom()).toBe(4);
   expect(maps).toHaveLength(1);
+});
+
+it('重新进入缓存单图时复位视角并取消离场动画，复用地图对象', () => {
+  const onChange = vi.fn();
+  const movedState = { ...state, mapViews: { 'map-1': { center: [8200, -4500] as [number, number], zoom: 4 } } };
+  const props = { state: movedState, interactive: true, onChange, pageId: 'map-1', active: true };
+  const screen = render(createElement(MapStage, props));
+  const map = maps[0];
+  const cancel = vi.spyOn(map.view, 'cancelAnimations');
+  screen.rerender(createElement(MapStage, { ...props, active: false }));
+  expect(cancel).toHaveBeenCalled();
+  const resetCamera = { center: [8000, -4500] as [number, number], zoom: 0 };
+  screen.rerender(createElement(MapStage, { ...props, state: { ...state, mapViews: { 'map-1': resetCamera } } }));
+  expect(map.view.getCenter()).toEqual(resetCamera.center);
+  expect(map.view.getZoom()).toBe(resetCamera.zoom);
+  expect(map.attachedCameras.at(-1)).toEqual(resetCamera);
+  expect(map.renderSync).toHaveBeenCalledTimes(2);
+  expect(maps).toHaveLength(1);
+  expect(map.dispose).not.toHaveBeenCalled();
+});
+
+it('展示窗口尺寸变化不能再次修正消息中的初始缩放', () => {
+  const camera = { center: [8000, -4500] as [number, number], zoom: 0 };
+  render(createElement(MapStage, { state: { ...state, mapViews: { 'map-1': camera } }, interactive: false, onChange: vi.fn(), pageId: 'map-1' }));
+  const view = maps[0].view;
+  view.setViewportSize([3840, 2160]);
+  expect(view.getCenter()).toEqual(camera.center);
+  expect(view.getZoom()).toBe(camera.zoom);
+});
+
+it('本机已发出的中间视角不会反向覆盖继续进行的缩放', () => {
+  const onChange = vi.fn();
+  const props = { state, interactive: true, onChange, pageId: 'map-1' };
+  const screen = render(createElement(MapStage, props));
+  const map = maps[0];
+  act(() => { map.view.setZoom(4); map.events.moveend(); });
+  const patch = onChange.mock.calls.at(-1)![0];
+  act(() => map.view.setZoom(4.1));
+  const cancel = vi.spyOn(map.view, 'cancelAnimations');
+  screen.rerender(createElement(MapStage, { ...props, state: { ...state, ...patch } }));
+  expect(map.view.getZoom()).toBeCloseTo(4.1);
+  expect(cancel).not.toHaveBeenCalled();
 });

@@ -31,16 +31,16 @@ final class ConnectionUITests: XCTestCase {
         let status = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "已连接")).firstMatch
         XCTAssertTrue(status.waitForExistence(timeout: 30), "未连接真实 Rust 同步服务")
         app.buttons["返回"].firstMatch.tap()
-        XCTAssertTrue(app.links["图1"].waitForExistence(timeout: 60), "连接后未加载 Windows 原图目录")
+        XCTAssertTrue(app.buttons["图1"].waitForExistence(timeout: 60), "连接后未加载 Windows 原图目录")
         capture(app, "已连接并加载三图")
         for number in 1...5 {
-            app.links["图\(number)"].tap()
+            app.buttons["图\(number)"].tap()
             let back = app.buttons["返回"].firstMatch
             XCTAssertTrue(back.waitForExistence(timeout: 15))
             sleep(2)
             capture(app, "原图\(number)")
             back.tap()
-            XCTAssertTrue(app.links["图1"].waitForExistence(timeout: 15))
+            XCTAssertTrue(app.buttons["图1"].waitForExistence(timeout: 15))
         }
     }
 

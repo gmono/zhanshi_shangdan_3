@@ -31,6 +31,10 @@ export function useSync(role: Role) {
   const [error, setError] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ready = useRef(false);
+  const messageId = useRef(0);
+  const send = useCallback((ws: WebSocket, message: Record<string, unknown>) => {
+    ws.send(JSON.stringify({ ...message, id: ++messageId.current }));
+  }, []);
 
   useEffect(() => {
     if (!connection.ip) { ready.current = false; setStatus('等待连接 Windows'); setPeers({ controller: false, displays: 0 }); return; }
@@ -42,7 +46,7 @@ export function useSync(role: Role) {
       url.searchParams.set('role', role); url.searchParams.set('room', FIXED_ROOM);
       setStatus('连接中'); ready.current = false;
       const ws = new WebSocket(url); socket.current = ws;
-      ws.onopen = () => { if (stopped) return; ws.send(JSON.stringify({ type: 'hello', role, room: FIXED_ROOM })); setError(''); };
+      ws.onopen = () => { if (stopped) return; send(ws, { type: 'hello', role, room: FIXED_ROOM }); setError(''); };
       ws.onmessage = event => {
         if (stopped) return;
         let message;
@@ -52,7 +56,7 @@ export function useSync(role: Role) {
           const next = parseState(message.state);
           // 控制端保留正在拖动的本地状态，避免自己的回声把分割线拉回。
           if (next && role === 'display') { const received = { ...initialState, ...next }; latest.current = received; setState(received); }
-          if (!ready.current && role === 'controller') ws.send(JSON.stringify({ type: 'state', state: latest.current }));
+          if (!ready.current && role === 'controller') send(ws, { type: 'state', state: latest.current });
           ready.current = true;
         }
         if (message.type === 'presence') setPeers({ controller: !!message.controller, displays: message.displays });
@@ -69,7 +73,7 @@ export function useSync(role: Role) {
     // 推迟到下一任务，避免 React StrictMode 的首次清理创建重复控制连接。
     const start = setTimeout(connect, 0);
     return () => { clearTimeout(start); stopped = true; ready.current = false; clearTimeout(retry); clearTimeout(timer.current); timer.current = undefined; socket.current?.close(); };
-  }, [connection, role]);
+  }, [connection, role, send]);
 
   const update = useCallback((patch: Partial<MapState>) => {
     if (role !== 'controller') return;
@@ -78,15 +82,15 @@ export function useSync(role: Role) {
     if (!next) return;
     latest.current = next; setState(next);
     if ((patch.comparison !== undefined || patch.page !== undefined) && ready.current && socket.current?.readyState === WebSocket.OPEN) {
-      socket.current.send(JSON.stringify({ type: 'state', state: next }));
+      send(socket.current, { type: 'state', state: next });
       return;
     }
     // 每 16ms 最多推送一次，尾帧始终推送最新状态。
     if (!timer.current) timer.current = setTimeout(() => {
       timer.current = undefined;
-      if (ready.current && socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ type: 'state', state: latest.current }));
+      if (ready.current && socket.current?.readyState === WebSocket.OPEN) send(socket.current, { type: 'state', state: latest.current });
     }, 16);
-  }, [role]);
+  }, [role, send]);
   const configure = (next: Connection) => {
     try { localStorage.setItem('exhibition-connection-v2', JSON.stringify(next)); } catch { /* 存储受限时仍可连接 */ }
     setError(''); setConnection(next);

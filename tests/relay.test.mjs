@@ -8,8 +8,11 @@ const state = { center: [13375800, 3536000], zoom: 12, showPoints: true, compari
 function inbox(ws) {
   const messages = [];
   const waiting = [];
+  let lastId = 0;
   ws.on('message', raw => {
     const value = JSON.parse(raw.toString());
+    assert.ok(Number.isSafeInteger(value.id) && value.id > lastId, '所有同步消息必须有递增整数 id');
+    lastId = value.id;
     const index = waiting.findIndex(item => item.type === value.type);
     if (index >= 0) { const [item] = waiting.splice(index, 1); clearTimeout(item.timer); item.resolve(value); }
     else messages.push(value);
@@ -37,8 +40,10 @@ test('房间隔离、只读权限、三图状态同步和重连快照', async t 
   assert.equal((await display.next('snapshot')).state, null);
   const controller = await connect('controller');
   await controller.next('snapshot');
-  controller.ws.send(JSON.stringify({ type: 'state', state }));
-  assert.deepEqual((await display.next('snapshot')).state, state);
+  controller.ws.send(JSON.stringify({ type: 'state', id: 1, state }));
+  const snapshot = await display.next('snapshot');
+  assert.deepEqual(snapshot.state, state);
+  assert.equal(snapshot.sourceId, 1);
   await controller.next('snapshot');
   const late = await connect('display');
   assert.deepEqual((await late.next('snapshot')).state, state);

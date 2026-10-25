@@ -1,13 +1,20 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::{Arc, atomic::{AtomicU64, Ordering}}};
 use tokio::{net::{TcpListener, TcpStream, UdpSocket}, sync::{mpsc, Mutex}, task::JoinHandle, time::{timeout_at, Duration, Instant}};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
 type Tx = mpsc::UnboundedSender<Message>;
-#[derive(Default)] struct Room { state: Option<Value>, controller: Option<u64>, peers: HashMap<u64, (String, Tx)> }
+#[derive(Default)] struct Room { state: Option<Value>, revision: u64, controller: Option<u64>, peers: HashMap<u64, (String, Tx)> }
 #[derive(Default)] struct Relay { rooms: HashMap<String, Room>, next_id: u64 }
 #[derive(Default)] pub struct RelayHandle { task: Mutex<Option<JoinHandle<()>>> }
+
+// 所有调用都在 relay 锁内完成，编号与入发送队列顺序一致。
+fn sync_message(mut value: Value) -> Message {
+    static NEXT_MESSAGE_ID: AtomicU64 = AtomicU64::new(1);
+    value["id"] = json!(NEXT_MESSAGE_ID.fetch_add(1, Ordering::Relaxed));
+    Message::Text(value.to_string().into())
+}
 
 pub async fn start(handle: Arc<RelayHandle>, port: u16) -> Result<String, String> {
     start_on(handle,([0,0,0,0],port).into()).await
@@ -93,12 +100,12 @@ async fn handle_client(stream: TcpStream, relay: Arc<Mutex<Relay>>) -> Result<()
         }
         room.peers.insert(id, (role.clone(), tx.clone()));
         if role == "controller" { room.controller = Some(id); }
-        let _ = tx.send(Message::Text(json!({"type":"snapshot","state":room.state,"revision":0}).to_string().into()));
-        let presence = Message::Text(json!({
+        let _ = tx.send(sync_message(json!({"type":"snapshot","state":room.state,"revision":room.revision})));
+        let presence = sync_message(json!({
             "type": "presence",
             "controller": room.controller.is_some(),
             "displays": room.peers.values().filter(|(peer_role, _)| peer_role == "display").count(),
-        }).to_string().into());
+        }));
         for (_, peer) in room.peers.values() { let _ = peer.send(presence.clone()); }
         id
     };
@@ -106,12 +113,22 @@ async fn handle_client(stream: TcpStream, relay: Arc<Mutex<Relay>>) -> Result<()
     while let Some(incoming) = stream.next().await {
         let Ok(message) = incoming else {break}; if message.is_close() {break;} if !message.is_text() { continue; }
         let value: Value = serde_json::from_str(message.to_text().unwrap_or("{}")).unwrap_or_default();
-        let is_active_controller = relay.lock().await.rooms.get(&room_id).is_some_and(|room| room.controller == Some(id));
-        if role != "controller" || !is_active_controller { let _ = tx.send(Message::Text(json!({"type":"error","message":"展示端只读"}).to_string().into())); continue; }
+        let mut all = relay.lock().await;
+        let is_active_controller = all.rooms.get(&room_id).is_some_and(|room| room.controller == Some(id));
+        if role != "controller" || !is_active_controller { let _ = tx.send(sync_message(json!({"type":"error","message":"展示端只读"}))); continue; }
         if value.get("type").and_then(Value::as_str) != Some("state") { continue; }
         let state = value.get("state").cloned().unwrap_or_default(); if !state.is_object() { continue; }
-        let all = relay.lock().await; if let Some(room) = all.rooms.get(&room_id) { let payload = Message::Text(json!({"type":"snapshot","state":state,"revision":1}).to_string().into()); for (_, peer) in room.peers.values() { let _ = peer.send(payload.clone()); } }
-        drop(all); let mut all = relay.lock().await; if let Some(room) = all.rooms.get_mut(&room_id) { room.state = Some(state); }
+        if let Some(room) = all.rooms.get_mut(&room_id) {
+            // 状态入库、编号、广播在同一个临界区内完成，换页与视角不会拆开。
+            room.state = Some(state);
+            room.revision += 1;
+            let mut snapshot = json!({"type":"snapshot","state":room.state,"revision":room.revision});
+            if let Some(source_id) = value.get("id").and_then(Value::as_u64).filter(|n| *n > 0 && *n <= 9_007_199_254_740_991) {
+                snapshot["sourceId"] = json!(source_id);
+            }
+            let payload = sync_message(snapshot);
+            for (_, peer) in room.peers.values() { let _ = peer.send(payload.clone()); }
+        }
     }
     writer.abort();
     let mut all = relay.lock().await;
@@ -120,11 +137,11 @@ async fn handle_client(stream: TcpStream, relay: Arc<Mutex<Relay>>) -> Result<()
         if room.controller == Some(id) { room.controller = None; }
         if room.peers.is_empty() { all.rooms.remove(&room_id); }
         else if let Some(room) = all.rooms.get(&room_id) {
-            let presence = Message::Text(json!({
+            let presence = sync_message(json!({
                 "type": "presence",
                 "controller": room.controller.is_some(),
                 "displays": room.peers.values().filter(|(peer_role, _)| peer_role == "display").count(),
-            }).to_string().into());
+            }));
             for (_, peer) in room.peers.values() { let _ = peer.send(presence.clone()); }
         }
     }

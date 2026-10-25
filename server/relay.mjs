@@ -4,8 +4,9 @@ import { parseState, canPublish } from '../src/sync/protocol.mjs';
 export function createRelay({ port = 8787, host = '0.0.0.0' } = {}) {
   const rooms = new Map();
   const wss = new WebSocketServer({ port, host, maxPayload: 4096 });
+  let messageId = 0;
   const send = (client, value) => {
-    if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(value));
+    if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({ ...value, id: ++messageId }));
   };
   wss.on('connection', (client, request) => {
     const url = new URL(request.url, 'http://relay.local');
@@ -40,7 +41,8 @@ export function createRelay({ port = 8787, host = '0.0.0.0' } = {}) {
       if (!state) { send(client, { type: 'error', message: '无效地图状态' }); return; }
       room.state = state;
       room.revision++;
-      for (const peer of room.clients) send(peer, { type: 'snapshot', state, revision: room.revision });
+      for (const peer of room.clients) send(peer, { type: 'snapshot', state, revision: room.revision,
+        ...(Number.isSafeInteger(message.id) && message.id > 0 ? { sourceId: message.id } : {}) });
     });
     client.on('close', () => {
       room.clients.delete(client);

@@ -83,3 +83,22 @@ it('切换页面立即同步，不等待16ms合并窗口', async () => {
   expect(ws.sent).toHaveLength(1);
   expect(JSON.parse(ws.sent[0]).state.page).toBe('map-5');
 });
+
+it('换页和初始视角在同一消息发送，待发尾帧不回写旧状态，所有消息包含递增整数编号', async () => {
+  const { result, ws } = await connect('controller');
+  act(() => { ws.onopen?.(); ws.snapshot(initialState); });
+  vi.useFakeTimers();
+  act(() => result.current.update({ zoom: 4 }));
+  const camera = { center: [800, -500] as [number, number], zoom: 2 };
+  const start = ws.sent.length;
+  act(() => result.current.update({ page: 'map-5', comparison: false, ...camera, mapViews: { 'map-5': camera } }));
+  expect(ws.sent.length).toBe(start + 1);
+  act(() => vi.advanceTimersByTime(16));
+  for (const message of ws.sent.slice(start).map(raw => JSON.parse(raw))) {
+    expect(message.state.page).toBe('map-5');
+    expect(message.state.mapViews['map-5']).toEqual(camera);
+    expect(message.state.zoom).toBe(2);
+  }
+  const ids = ws.sent.map(raw => JSON.parse(raw).id);
+  expect(ids.every((id, i) => Number.isSafeInteger(id) && id > (ids[i - 1] || 0))).toBe(true);
+});

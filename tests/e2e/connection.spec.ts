@@ -3,6 +3,7 @@ import {WebSocket} from 'ws';
 const host=process.env.E2E_SERVER_IP||'127.0.0.1';
 
 test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换五张大图',async({page,request})=>{
+  test.setTimeout(180000);
   const painted=async(pageId:string,count:number)=>{
     const canvases=page.locator(`.map-stage[data-page="${pageId}"] canvas`);
     await expect(canvases).toHaveCount(count);
@@ -28,23 +29,67 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
   await expect(page.locator('.map-stage[data-page="comparison"]')).toBeVisible();
   await expect.poll(()=>new Set(tiles.map(u=>new URL(u).pathname.split('/')[2])).size).toBeGreaterThanOrEqual(6);
   await painted('comparison',6);
+  const panel=page.getByRole('region',{name:'地图操作面板'});
+  await expect(panel).toBeVisible();
+  const checkLayout=async()=>{
+    const viewport=page.viewportSize()!;
+    const box=(await panel.boundingBox())!;
+    expect(box.y).toBeGreaterThan(viewport.height/2);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x+box.width).toBeLessThanOrEqual(viewport.width);
+    expect(box.y+box.height).toBeLessThan(viewport.height);
+    const widths=await page.locator('.split-outer > .split-panel').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().width));
+    expect(widths).toHaveLength(3);
+    expect(Math.max(...widths)-Math.min(...widths)).toBeLessThan(1);
+    await expect(page.locator('.outer-divider [role="slider"]')).toHaveCount(0);
+    await expect(page.locator('.inner-divider [role="slider"]')).toHaveCount(3);
+  };
+  await checkLayout();
+  const originalViewport=page.viewportSize()!;
+  await page.setViewportSize({width:1194,height:834});
+  await checkLayout();
+  await page.screenshot({path:`tmp/e2e/${test.info().project.name}-capsule-landscape.png`});
+  await page.setViewportSize(originalViewport);
   await page.screenshot({path:`tmp/e2e/${test.info().project.name}-initial.png`});
   const catalog=await request.get(`http://${host}:1421/catalog`);expect(catalog.ok()).toBeTruthy();
   const body=await catalog.json();expect(body.locations[0].images[0].width).toBe(640);expect(body.locations[0].images[1].width).toBe(800);
-  const observer=new WebSocket(`ws://${host}:8787`);const states:any[]=[];
-  await new Promise<void>((resolve,reject)=>{observer.once('open',()=>{observer.send(JSON.stringify({type:'hello',role:'display',room:'exhibition-main-room'}));resolve();});observer.once('error',reject);});
-  observer.on('message',b=>{const m=JSON.parse(String(b));if(m.type==='snapshot'&&m.state)states.push(m.state);});
+  const observer=new WebSocket(`ws://${host}:8787`);const states:any[]=[];const envelopes:any[]=[];
+  observer.on('message',b=>{const m=JSON.parse(String(b));envelopes.push(m);if(m.type==='snapshot'&&m.state)states.push(m.state);});
+  await new Promise<void>((resolve,reject)=>{observer.once('open',()=>{observer.send(JSON.stringify({id:1,type:'hello',role:'display',room:'exhibition-main-room'}));resolve();});observer.once('error',reject);});
   try{
     for(let i=1;i<=5;i++){
-      await page.getByRole('link',{name:`图${i}`,exact:true}).click();
+      await page.getByRole('button',{name:`图${i}`,exact:true}).click();
       await expect(page.locator(`.map-stage[data-page="map-${i}"]`)).toBeVisible();
       await expect.poll(()=>tiles.some(url=>url.includes(`/zoomify/map-${i}/`))).toBeTruthy();
       await expect.poll(()=>states.at(-1)?.page).toBe(`map-${i}`);
       await painted(`map-${i}`,1);
+      const initialCamera=structuredClone(states.at(-1).mapViews[`map-${i}`]);
+      const target=page.locator(`.map-stage[data-page="map-${i}"] .map-target`);
+      const bounds=(await target.boundingBox())!;
+      await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
+      await page.mouse.wheel(0,-700);
+      await expect.poll(()=>states.at(-1)?.mapViews?.[`map-${i}`]?.zoom).toBeGreaterThan(initialCamera.zoom+0.2);
+      await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
+      await page.mouse.down();
+      await page.mouse.move(bounds.x+bounds.width/2+100,bounds.y+bounds.height/2+50,{steps:8});
+      await page.mouse.up();
+      await page.getByRole('button',{name:'返回',exact:true}).click();
+      await painted('comparison',6);
+      const entryStart=states.length;
+      await page.getByRole('button',{name:`图${i}`,exact:true}).click();
+      await expect(page.locator(`.map-stage[data-page="map-${i}"]`)).toBeVisible();
+      await expect.poll(()=>states.at(-1)?.page).toBe(`map-${i}`);
+      await expect.poll(()=>states.at(-1)?.mapViews?.[`map-${i}`]).toEqual(initialCamera);
+      await painted(`map-${i}`,1);
+      const entryStates=states.slice(entryStart).filter(state=>state.page===`map-${i}`);
+      expect(entryStates.length).toBeGreaterThan(0);
+      for(const state of entryStates)expect(state.mapViews[`map-${i}`]).toEqual(initialCamera);
       await page.getByRole('button',{name:'返回',exact:true}).click();
       await painted('comparison',6);
     }
     expect(errors).toEqual([]);
+    expect(envelopes.every((m,i)=>Number.isSafeInteger(m.id)&&m.id>0&&(i===0||m.id>envelopes[i-1].id))).toBeTruthy();
+    expect(envelopes.some(m=>m.type==='snapshot'&&Number.isSafeInteger(m.sourceId))).toBeTruthy();
     await page.screenshot({path:`tmp/e2e/${test.info().project.name}-connected.png`});
   }finally{observer.terminate();}
 });
