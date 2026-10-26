@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import { IonApp, IonButton, IonContent, IonIcon, IonPage, IonRouterOutlet, setupIonicReact, useIonRouter } from '@ionic/react';
+import { IonApp, IonButton, IonContent, IonIcon, IonPage, IonRouterOutlet, setupIonicReact, useIonRouter, useIonViewWillEnter, useIonViewWillLeave } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
 import { arrowBackOutline, mapOutline, settingsOutline } from 'ionicons/icons';
 import { Route, useLocation } from 'react-router-dom';
@@ -69,31 +69,38 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
     if (preparedPage.current !== pageId) preparePage(pageId);
     preparedPage.current = null;
   }, [pageId, preparePage]);
-  return <IonRouterOutlet>
-    <Route exact path="/" render={() => <MapPage pageId="comparison" state={sync.state} update={sync.update} preparePage={preparePage} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} progress={resources.progress} />} />
-    <Route exact path="/map/:pageId" render={({ match }) => <MapPage key={match.params.pageId} pageId={match.params.pageId} state={sync.state} update={sync.update} preparePage={preparePage} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} progress={resources.progress} />} />
+  return <div className="controller-shell"><IonRouterOutlet>
+    <Route exact path="/" render={() => <MapPage pageId="comparison" state={sync.state} update={sync.update} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} progress={resources.progress} />} />
+    <Route exact path="/map/:pageId" render={({ match }) => <MapPage key={match.params.pageId} pageId={match.params.pageId} state={sync.state} update={sync.update} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} progress={resources.progress} />} />
     <Route exact path="/settings" render={() => <ConnectionPanel value={sync.connection} onSave={sync.configure} status={sync.status} displays={sync.peers.displays} error={sync.error} homePath={`/${route.search}`} />} />
-  </IonRouterOutlet>;
+  </IonRouterOutlet><FloatingControls pathname={route.pathname} search={route.search} catalog={catalog} preparePage={preparePage} /></div>;
 }
 
-function MapPage({ state, update, preparePage, pageId, connected, tileHost, catalog, resourceMessage, progress }: { state: Sync['state']; update: Sync['update']; preparePage: (pageId: string, size?: [number, number]) => void; pageId: string; connected: boolean; tileHost: string; catalog: ResourceCatalog | null; resourceMessage: string; progress?: ResourceProgress | null }) {
+function MapPage({ state, update, pageId, connected, tileHost, catalog, resourceMessage, progress }: { state: Sync['state']; update: Sync['update']; pageId: string; connected: boolean; tileHost: string; catalog: ResourceCatalog | null; resourceMessage: string; progress?: ResourceProgress | null }) {
   const router = useIonRouter();
-  const comparison = pageId === 'comparison';
-  const mapPages = catalog?.maps || [];
+  const frame = useRef<HTMLElement>(null);
+  useIonViewWillLeave(() => { if (frame.current) frame.current.style.display = 'none'; }, []);
+  useIonViewWillEnter(() => { if (frame.current) frame.current.style.display = 'block'; }, []);
   return <IonPage className="controller-page">
-    <IonContent className="controller-content" scrollY={false} scrollX={false}><main className="map-frame">{connected && catalog ? <MapStage state={state} interactive active onChange={update} pageId={pageId} tileHost={tileHost} catalog={catalog} /> : connected ? <ResourceStatus message={resourceMessage} progress={progress} /> : <IonButton className="connection-required" fill="clear" expand="full" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}>连接 Windows 大屏</IonButton>}</main></IonContent>
-    <div className="floating-controls" role="region" aria-label="地图操作面板">
-      {comparison ? <nav className="map-page-buttons" aria-label="地图页面">
-        {mapPages.map(page => <IonButton key={page.id} fill="clear" onClick={event => {
-          const frame = event.currentTarget.closest('.ion-page')?.querySelector('.map-frame')?.getBoundingClientRect();
-          preparePage(page.id, frame ? [frame.width, frame.height] : undefined);
-          router.push(`/map/${page.id}${location.search}`, 'forward', 'push');
-        }}><IonIcon slot="start" icon={mapOutline} />{page.label}</IonButton>)}
-      </nav> : <>
-        <IonButton fill="clear" onClick={() => router.push(`/${location.search}`, 'back', 'pop')}><IonIcon slot="start" icon={arrowBackOutline} />返回</IonButton>
-        <span className="floating-page-title">{mapPages.find(page => page.id === pageId)?.label}</span>
-      </>}
-      <IonButton className="floating-settings" fill="clear" aria-label="打开设置" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}><IonIcon slot="icon-only" icon={settingsOutline} /></IonButton>
-    </div>
+    <IonContent className="controller-content" scrollY={false} scrollX={false}><main className="map-frame" ref={frame}>{connected && catalog ? <MapStage state={state} interactive active onChange={update} pageId={pageId} tileHost={tileHost} catalog={catalog} /> : connected ? <ResourceStatus message={resourceMessage} progress={progress} /> : <IonButton className="connection-required" fill="clear" expand="full" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}>连接 Windows 大屏</IonButton>}</main></IonContent>
   </IonPage>;
+}
+
+function FloatingControls({ pathname, search, catalog, preparePage }: { pathname: string; search: string; catalog: ResourceCatalog | null; preparePage: (pageId: string, size?: [number, number]) => void }) {
+  const router = useIonRouter();
+  const comparison = pathname === '/';
+  const pageId = pathname.split('/')[2];
+  const mapPages = catalog?.maps || [];
+  return <div className="floating-controls" hidden={pathname === '/settings'} role="region" aria-label="地图操作面板">
+    {comparison ? <nav className="map-page-buttons" aria-label="地图页面">
+      {mapPages.map(page => <IonButton key={page.id} fill="clear" onClick={() => {
+        preparePage(page.id, [window.innerWidth, window.innerHeight]);
+        router.push(`/map/${page.id}${search}`, 'forward', 'push');
+      }}><IonIcon slot="start" icon={mapOutline} />{page.label}</IonButton>)}
+    </nav> : <>
+      <IonButton fill="clear" onClick={() => router.push(`/${search}`, 'back', 'pop')}><IonIcon slot="start" icon={arrowBackOutline} />返回</IonButton>
+      <span className="floating-page-title">{mapPages.find(page => page.id === pageId)?.label}</span>
+    </>}
+    <IonButton className="floating-settings" fill="clear" aria-label="打开设置" onClick={() => router.push(`/settings${search}`, 'forward', 'push')}><IonIcon slot="icon-only" icon={settingsOutline} /></IonButton>
+  </div>;
 }

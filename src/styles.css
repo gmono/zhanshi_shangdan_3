@@ -33,6 +33,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 3px; }
 
 .controller-page, .settings-page { --background: var(--app-canvas); }
+.controller-shell { position: absolute; inset: 0; isolation: isolate; }
 .controller-header, .settings-page ion-header { box-shadow: none; }
 .main-toolbar, .settings-toolbar { --background: var(--app-surface); --border-color: var(--app-divider); --min-height: 48px; --padding-start: 12px; --padding-end: 12px; }
 .main-toolbar { --min-height: 56px; }
