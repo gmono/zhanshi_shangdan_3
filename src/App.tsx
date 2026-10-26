@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { IonApp, IonButton, IonContent, IonIcon, IonPage, IonRouterOutlet, setupIonicReact, useIonRouter, useIonViewWillEnter, useIonViewWillLeave } from '@ionic/react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { IonApp, IonButton, IonContent, IonIcon, IonPage, IonRouterOutlet, setupIonicReact, useIonRouter } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
 import { arrowBackOutline, mapOutline, settingsOutline } from 'ionicons/icons';
 import { Route, useLocation } from 'react-router-dom';
@@ -78,13 +78,10 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
 
 function MapPage({ state, update, preparePage, pageId, connected, tileHost, catalog, resourceMessage, progress }: { state: Sync['state']; update: Sync['update']; preparePage: (pageId: string, size?: [number, number]) => void; pageId: string; connected: boolean; tileHost: string; catalog: ResourceCatalog | null; resourceMessage: string; progress?: ResourceProgress | null }) {
   const router = useIonRouter();
-  const [mapActive, setMapActive] = useState(false);
-  useIonViewWillEnter(() => setMapActive(true), []);
-  useIonViewWillLeave(() => setMapActive(false), []);
   const comparison = pageId === 'comparison';
   const mapPages = catalog?.maps || [];
   return <IonPage className="controller-page">
-    <IonContent className="controller-content" scrollY={false} scrollX={false}><main className="map-frame">{connected && catalog ? <MapStage state={state} interactive active={mapActive && state.page === pageId} onChange={update} pageId={pageId} tileHost={tileHost} catalog={catalog} /> : connected ? <ResourceStatus message={resourceMessage} progress={progress} /> : <IonButton className="connection-required" fill="clear" expand="full" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}>连接 Windows 大屏</IonButton>}</main></IonContent>
+    <IonContent className="controller-content" scrollY={false} scrollX={false}><main className="map-frame">{connected && catalog ? <MapStage state={state} interactive active onChange={update} pageId={pageId} tileHost={tileHost} catalog={catalog} /> : connected ? <ResourceStatus message={resourceMessage} progress={progress} /> : <IonButton className="connection-required" fill="clear" expand="full" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}>连接 Windows 大屏</IonButton>}</main></IonContent>
     <div className="floating-controls" role="region" aria-label="地图操作面板">
       {comparison ? <nav className="map-page-buttons" aria-label="地图页面">
         {mapPages.map(page => <IonButton key={page.id} fill="clear" onClick={event => {
