@@ -38,6 +38,9 @@ export default function App() {
 function DisplayApp({ sync }: { sync: Sync }) {
   const resources = useResourceCatalog('127.0.0.1', true, true);
   const catalog = resources.catalog;
+  useEffect(() => {
+    if (isTauri()) void invoke('set_display_fullscreen', { enabled: true }).catch(() => undefined);
+  }, []);
   return <IonPage className="display-page"><IonContent className="display-content" scrollY={false} scrollX={false}>
     {catalog ? <MapStage state={sync.state} interactive={false} onChange={sync.update} catalog={catalog} tileHost="127.0.0.1" /> : <ResourceStatus message={resources.message} progress={resources.progress} />}
   </IonContent></IonPage>;
