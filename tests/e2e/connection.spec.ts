@@ -4,6 +4,9 @@ const host=process.env.E2E_SERVER_IP||'127.0.0.1';
 
 test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换五张大图',async({page,request})=>{
   test.setTimeout(180000);
+  const settled = async () => {
+    await expect.poll(() => page.locator('ion-router-outlet').evaluate(outlet => outlet.getAnimations({ subtree: true }).some(animation => animation.playState === 'running'))).toBe(false);
+  };
   const painted=async(pageId:string,count:number)=>{
     const canvases=page.locator(`.map-stage[data-page="${pageId}"] canvas`);
     await expect(canvases).toHaveCount(count);
@@ -25,10 +28,15 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
   await page.getByRole('textbox',{name:'Windows 地址',exact:true}).fill(host);
   await page.getByRole('button',{name:'保存连接',exact:true}).click();
   await expect(page.getByText(/已连接 \d+ 块大屏/)).toBeVisible();
-  await page.getByRole('button',{name:'返回',exact:true}).click();
+  await page.locator('.settings-page').getByRole('button',{name:'返回',exact:true}).click();
   await expect(page.locator('.map-stage[data-page="comparison"]')).toBeVisible();
   await expect.poll(()=>new Set(tiles.map(u=>new URL(u).pathname.split('/')[2])).size).toBeGreaterThanOrEqual(6);
   await painted('comparison',6);
+  const displayPage=await page.context().newPage();
+  await displayPage.setViewportSize({width:1920,height:1080});
+  await displayPage.goto('/?role=display');
+  await expect(displayPage.locator('.map-stage[data-page="comparison"]')).toBeVisible();
+  await expect.poll(()=>displayPage.locator('.map-stage[data-page="comparison"] canvas').count()).toBe(6);
   const panel=page.getByRole('region',{name:'地图操作面板'});
   await expect(panel).toBeVisible();
   const checkLayout=async()=>{
@@ -64,6 +72,8 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
       await expect(page.locator(`.map-stage[data-page="map-${i}"]`)).toBeVisible();
       await expect.poll(()=>tiles.some(url=>url.includes(`/zoomify/map-${i}/`))).toBeTruthy();
       await expect.poll(()=>states.at(-1)?.page).toBe(`map-${i}`);
+      await expect(displayPage.locator(`.map-stage[data-page="map-${i}"]`)).toBeVisible();
+      await expect(displayPage.locator(`.map-stage[data-page="map-${i}"] canvas`)).toHaveCount(1);
       await painted(`map-${i}`,1);
       const initialCamera=structuredClone(states.at(-1).mapViews[`map-${i}`]);
       const target=page.locator(`.map-stage[data-page="map-${i}"] .map-target`);
@@ -76,9 +86,14 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
       await page.mouse.down();
       await page.mouse.move(bounds.x+bounds.width/2+100,bounds.y+bounds.height/2+50,{steps:8});
       await page.mouse.up();
-      await page.getByRole('button',{name:'返回',exact:true}).click();
+      await panel.getByRole('button',{name:'返回',exact:true}).click();
       await painted('comparison',6);
       await expect.poll(()=>states.at(-1)?.page).toBe('comparison');
+      await expect(panel.getByRole('button',{name:'图1',exact:true})).toBeVisible();
+      await settled();
+      await expect(displayPage.locator('.map-stage[data-page="comparison"]')).toBeVisible();
+      await expect(displayPage.locator('.map-stage[data-page="comparison"] canvas')).toHaveCount(6);
+      await expect.poll(()=>states.at(-1)?.innerSplits?.every((splits:number[])=>splits.every(value=>value===0))).toBeTruthy();
       const entryStart=states.length;
       await page.getByRole('button',{name:`图${i}`,exact:true}).click();
       await expect(page.locator(`.map-stage[data-page="map-${i}"]`)).toBeVisible();
@@ -88,10 +103,14 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
       const entryStates=states.slice(entryStart).filter(state=>state.page===`map-${i}`);
       expect(entryStates.length).toBeGreaterThan(0);
       for(const state of entryStates)expect(state.mapViews[`map-${i}`]).toEqual(initialCamera);
-      await page.getByRole('button',{name:'返回',exact:true}).click();
+      await page.getByRole('region',{name:'地图操作面板'}).getByRole('button',{name:'返回',exact:true}).click();
       await painted('comparison',6);
+      await expect.poll(()=>states.at(-1)?.page).toBe('comparison');
+      await expect(panel.getByRole('button',{name:'图1',exact:true})).toBeVisible();
+      await settled();
     }
     expect(errors).toEqual([]);
+    await displayPage.close();
     expect(envelopes.every((m,i)=>Number.isSafeInteger(m.id)&&m.id>0&&(i===0||m.id>envelopes[i-1].id))).toBeTruthy();
     expect(envelopes.some(m=>m.type==='snapshot'&&Number.isSafeInteger(m.sourceId))).toBeTruthy();
     await page.screenshot({path:`tmp/e2e/${test.info().project.name}-connected.png`});

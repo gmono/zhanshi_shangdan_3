@@ -10,6 +10,7 @@ import { SplitContainer } from './SplitContainer';
 import type { MapState, MapViewState } from '../sync/protocol.mjs';
 import type { ResourceCatalog, ImageResource } from './resourceCatalog';
 import Projection from 'ol/proj/Projection';
+import { fitZoom, initialCamera, localCamera, relativeCamera } from './initialCamera';
 import 'ol/ol.css';
 
 interface Props { state: MapState; interactive: boolean; onChange: (patch: Partial<MapState>) => void; pageId?: string; active?: boolean; tileHost?: string; catalog?: ResourceCatalog }
@@ -20,7 +21,7 @@ export const MapStage = memo(function MapStage({ state, interactive, onChange, p
   const comparison = pageId === 'comparison';
   const outer = evenSplits(places.length);
   const mapPage = pages.find(page => page.id === pageId) || pages[0];
-  const camera = state.mapViews?.[pageId] || (catalog ? {center:[mapPage.width/2,-mapPage.height/2] as [number,number],zoom:0} : { center: state.center, zoom: state.zoom });
+  const camera = state.mapViews?.[pageId] || (catalog ? initialCamera() : { center: state.center, zoom: state.zoom });
   return <div className={`map-stage ${interactive ? 'is-interactive' : 'display-map'}`} data-page={pageId} aria-label={comparison ? '地点与图片嵌套对比' : mapPage.label}>
     {comparison ? <SplitContainer splits={outer} interactive={false} label="地点" level="outer" onChange={quiet}>
       {places.map((place, placeIndex) => {
@@ -32,30 +33,37 @@ export const MapStage = memo(function MapStage({ state, interactive, onChange, p
           {place.images.map((resource, index) => <MapSurface key={resource.url + index} resource={resource} tileHost={tileHost} interactive={false} active={active} showErrors={interactive} fit camera={initialState} onChange={quiet} />)}
         </SplitContainer>;
       })}
-    </SplitContainer> : <MapSurface resource={mapPage} tileHost={tileHost} interactive={interactive} active={active} showErrors={interactive} fit={false} camera={camera} onChange={next => onChange({ ...next, mapViews: { ...state.mapViews, [pageId]: next } })} />}
+    </SplitContainer> : <MapSurface resource={mapPage} tileHost={tileHost} interactive={interactive} publishing={state.page === pageId} active={active} showErrors={interactive} fit={false} camera={camera} onChange={next => onChange({ ...(next.space ? {} : next), mapViews: { ...state.mapViews, [pageId]: next } })} />}
   </div>;
 }, (previous, next) => previous.pageId === next.pageId && previous.interactive === next.interactive && previous.active === next.active && previous.catalog === next.catalog && previous.tileHost === next.tileHost && previous.onChange === next.onChange
   && (previous.state === next.state || (previous.active === false && next.active === false)));
 
-interface SurfaceProps { resource: ImageResource; tileHost?: string; interactive: boolean; active: boolean; showErrors: boolean; fit: boolean; camera: MapViewState; onChange: (value: MapViewState) => void }
-function MapSurface({ resource, tileHost, interactive, active, showErrors, fit, camera, onChange }: SurfaceProps) {
+interface SurfaceProps { resource: ImageResource; tileHost?: string; interactive: boolean; publishing?: boolean; active: boolean; showErrors: boolean; fit: boolean; camera: MapViewState; onChange: (value: MapViewState) => void }
+function MapSurface({ resource, tileHost, interactive, publishing = false, active, showErrors, fit, camera, onChange }: SurfaceProps) {
   const { url, width, height } = resource;
   const root = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const view = useRef<View | null>(null);
   const running = useRef(false);
+  const applying = useRef(false);
+  const mayPublish = useRef(publishing);
+  const viewport = useRef<[number, number]>([width, height]);
   const frame = useRef(0);
   const latest = useRef(camera);
   const published = useRef<MapViewState | null>(null);
   const callback = useRef(onChange);
   const [tileError, setTileError] = useState(false);
-  latest.current = camera; callback.current = onChange;
+  latest.current = camera; callback.current = onChange; mayPublish.current = publishing;
   useLayoutEffect(() => {
     const tileUrl = tileHost && mapConfig.image ? `http://${tileHost}:1421${url}` : url;
     const source = mapConfig.image ? new Zoomify({ url: tileUrl, size: [width, height], crossOrigin: 'anonymous' }) : new XYZ({ url: tileUrl, crossOrigin: 'anonymous', attributions: mapConfig.attribution, maxZoom: 19 });
     setTileError(false);
-    const active = new View({ projection: mapConfig.image ? new Projection({code:'exhibition-pixels',units:'pixels',extent:[0,-height,width,0]}) : mapConfig.projection, center: latest.current.center, zoom: latest.current.zoom, minZoom: 0, maxZoom: 24, enableRotation: false, showFullExtent: mapConfig.image,
-      ...(mapConfig.image ? { extent: [0, -height, width, 0], constrainOnlyCenter: !fit, resolutions: (source as Zoomify).getTileGrid()?.getResolutions() } : {}) });
+    const firstCamera = localCamera(latest.current, { width, height }, viewport.current);
+    const resolutions = mapConfig.image ? (source as Zoomify).getTileGrid()?.getResolutions() : undefined;
+    const active = new View({ projection: mapConfig.image ? new Projection({code:'exhibition-pixels',units:'pixels',extent:[0,-height,width,0]}) : mapConfig.projection, center: firstCamera.center, zoom: firstCamera.zoom, minZoom: 0, maxZoom: latest.current.space ? 48 : 24, enableRotation: false, showFullExtent: mapConfig.image,
+      ...(mapConfig.image ? { extent: [0, -height, width, 0], constrainOnlyCenter: !fit,
+        // 单图允许按本机显示区域连续缩放；瓦片级别仍由 source 的网格选择。
+        ...(latest.current.space ? { maxResolution: resolutions?.[0] } : { resolutions }) } : {}) });
     view.current = active;
     let failed = 0;
     source.on('tileloaderror', () => { if (++failed >= 3) setTileError(true); });
@@ -67,14 +75,18 @@ function MapSurface({ resource, tileHost, interactive, active, showErrors, fit, 
     const publish = () => {
       frame.current = 0;
       const center = active.getCenter(), zoom = active.getZoom();
-      if (running.current && interactive && center && zoom !== undefined
-        && (Math.abs(center[0] - latest.current.center[0]) > 0.001 || Math.abs(center[1] - latest.current.center[1]) > 0.001 || Math.abs(zoom - latest.current.zoom) > 0.0001)) {
-        const next = { center: [...center] as [number, number], zoom };
+      if (!running.current || !interactive || !mayPublish.current || applying.current || !center || zoom === undefined) return;
+      if (latest.current.space && zoom < fitZoom({ width, height }, viewport.current) - 0.0001) {
+        applying.current = true; active.cancelAnimations(); active.setZoom(fitZoom({ width, height }, viewport.current)); applying.current = false;
+      }
+      const local = { center: [...center] as [number, number], zoom: active.getZoom() ?? zoom };
+      const next = latest.current.space ? relativeCamera(local, { width, height }, viewport.current) : local;
+      if (Math.abs(next.center[0] - latest.current.center[0]) > 0.00001 || Math.abs(next.center[1] - latest.current.center[1]) > 0.00001 || Math.abs(next.zoom - latest.current.zoom) > 0.0001) {
         published.current = next;
         callback.current(next);
       }
     };
-    const schedule = () => { if (running.current && interactive && !frame.current) frame.current = requestAnimationFrame(publish); };
+    const schedule = () => { if (running.current && interactive && mayPublish.current && !applying.current && !frame.current) frame.current = requestAnimationFrame(publish); };
     active.on('change:center', schedule); active.on('change:resolution', schedule);
     map.on('moveend', publish);
     return () => { running.current = false; cancelAnimationFrame(frame.current); frame.current = 0; map.dispose(); mapRef.current = null; view.current = null; };
@@ -84,21 +96,32 @@ function MapSurface({ resource, tileHost, interactive, active, showErrors, fit, 
     const targetView = view.current;
     if (!map || !targetView || !active || !root.current) return;
     // 挂载渲染目标前先复位，禁止旧视角参与首帧或回写同步状态。
+    applying.current = true;
     targetView.cancelAnimations();
     if (!fit) {
-      targetView.setCenter(latest.current.center);
-      targetView.setZoom(latest.current.zoom);
+      const local = localCamera(latest.current, { width, height }, viewport.current);
+      targetView.setCenter(local.center);
+      targetView.setZoom(local.zoom);
     }
     map.setTarget(root.current);
     const resize = () => {
       if (!root.current || root.current.clientWidth === 0 || root.current.clientHeight === 0) return;
+      applying.current = true;
       map.updateSize();
+      viewport.current = [root.current.clientWidth, root.current.clientHeight];
       if (fit && mapConfig.image) targetView.fit([0, -height, width, 0], { size: map.getSize() });
+      else if (latest.current.space) {
+        const local = localCamera(latest.current, { width, height }, viewport.current);
+        targetView.setCenter(local.center); targetView.setZoom(local.zoom);
+      }
+      map.renderSync();
+      applying.current = false;
     };
     const observer = new ResizeObserver(resize);
     observer.observe(root.current!); resize();
     // 缓存画布也必须在浏览器绘制前刷新，不能短暂露出上一次的画面。
     map.renderSync();
+    applying.current = false;
     running.current = true;
     return () => { running.current = false; cancelAnimationFrame(frame.current); frame.current = 0; targetView.cancelAnimations(); observer.disconnect(); map.setTarget(undefined); };
   }, [active, url, width, height, tileHost, interactive, fit]);
@@ -108,14 +131,17 @@ function MapSurface({ resource, tileHost, interactive, active, showErrors, fit, 
     // 本机操作发出的状态只用于同步大屏，不反向写回并打断本机缩放动画。
     const echo = published.current;
     if (interactive && echo && echo.zoom === camera.zoom && echo.center[0] === camera.center[0] && echo.center[1] === camera.center[1]) return;
+    const local = localCamera(camera, { width, height }, viewport.current);
     const center = targetView.getCenter();
-    const centerChanged = !center || Math.abs(center[0] - camera.center[0]) > 0.001 || Math.abs(center[1] - camera.center[1]) > 0.001;
-    const zoomChanged = Math.abs((targetView.getZoom() ?? 0) - camera.zoom) > 0.0001;
+    const centerChanged = !center || Math.abs(center[0] - local.center[0]) > 0.001 || Math.abs(center[1] - local.center[1]) > 0.001;
+    const zoomChanged = Math.abs((targetView.getZoom() ?? 0) - local.zoom) > 0.0001;
+    applying.current = true;
     if (centerChanged || zoomChanged) targetView.cancelAnimations();
-    if (centerChanged) targetView.setCenter(camera.center);
-    if (zoomChanged) targetView.setZoom(camera.zoom);
+    if (centerChanged) targetView.setCenter(local.center);
+    if (zoomChanged) targetView.setZoom(local.zoom);
     if (centerChanged || zoomChanged) mapRef.current?.renderSync();
-  }, [camera, fit, interactive, active]);
+    applying.current = false;
+  }, [camera, fit, interactive, active, width, height]);
   return <div className="map-surface">
     <div className="map-target" ref={root} />
     {showErrors && tileError && <div className="tile-error" role="status">图片加载失败</div>}

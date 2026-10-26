@@ -33,6 +33,12 @@ describe('嵌套分割协议约束', () => {
   it('支持每地点不同图片数量与独立地图视角', () => {
     expect(parseState(state)).toEqual(state);
   });
+  it('保留相对图片视角模式，拒绝无效比例或未知坐标空间', () => {
+    const camera = { center: [0.5, 0.5], zoom: 0, space: 'image-relative' };
+    expect(parseState({ ...state, mapViews: { 'map-1': camera } })?.mapViews?.['map-1']).toEqual(camera);
+    expect(parseState({ ...state, mapViews: { 'map-1': { ...camera, center: [1.1, 0.5] } } })).toBeNull();
+    expect(parseState({ ...state, mapViews: { 'map-1': { ...camera, space: 'pixels' } } })).toBeNull();
+  });
   it('完整保留两级贴边、重合和窄间距，允许面板完全收起', () => {
     for (const outerSplits of [[0, 0], [1, 1], [0, 1], [0.5, 0.51]]) {
       const collapsed = { ...state, outerSplits, innerSplits: [[0, 0], [1, 1], [0, 1]], splits: [0, 1] };

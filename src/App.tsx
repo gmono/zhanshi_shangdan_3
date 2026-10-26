@@ -6,7 +6,7 @@ import { Route, useLocation } from 'react-router-dom';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { getRole } from './platform/role';
 import { MapStage } from './map/MapStage';
-import { evenSplits, leftEdgeSplits } from './map/config';
+import { evenSplits, initialState, leftEdgeSplits } from './map/config';
 import { initialCamera } from './map/initialCamera';
 import type { ResourceCatalog } from './map/resourceCatalog';
 import { useSync } from './sync/useSync';
@@ -55,11 +55,16 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
   const connected = sync.status === '已连接';
   const resources = useResourceCatalog(sync.connection.ip, connected, false);
   const catalog = resources.catalog;
-  const preparePage = useCallback((targetPage: string, size: [number, number] = [window.innerWidth, window.innerHeight]) => {
+  const preparePage = useCallback((targetPage: string) => {
+    if (targetPage === 'comparison') {
+      update({ ...initialState, outerSplits: evenSplits(catalog?.locations.length || 3), innerSplits: catalog ? catalog.locations.map(place => leftEdgeSplits(place.images.length)) : initialState.innerSplits });
+      preparedPage.current = targetPage;
+      return;
+    }
     const map = catalog?.maps.find(item => item.id === targetPage);
-    const camera = map ? initialCamera(map, size) : undefined;
+    const camera = map ? initialCamera() : undefined;
     update({ page: targetPage, comparison: targetPage === 'comparison', ...(camera ? {
-      ...camera, mapViews: { ...latestState.current.mapViews, [targetPage]: camera },
+      mapViews: { ...latestState.current.mapViews, [targetPage]: camera },
     } : {}) });
     preparedPage.current = targetPage;
   }, [catalog, update]);
@@ -89,7 +94,7 @@ function MapPage({ state, update, pageId, connected, tileHost, catalog, resource
   </IonPage>;
 }
 
-function FloatingControls({ pathname, search, catalog, preparePage }: { pathname: string; search: string; catalog: ResourceCatalog | null; preparePage: (pageId: string, size?: [number, number]) => void }) {
+function FloatingControls({ pathname, search, catalog, preparePage }: { pathname: string; search: string; catalog: ResourceCatalog | null; preparePage: (pageId: string) => void }) {
   const router = useIonRouter();
   const comparison = pathname === '/';
   const pageId = pathname.split('/')[2];
@@ -97,11 +102,11 @@ function FloatingControls({ pathname, search, catalog, preparePage }: { pathname
   return <div className="floating-controls" hidden={pathname === '/settings'} role="region" aria-label="地图操作面板">
     {comparison ? <nav className="map-page-buttons" aria-label="地图页面">
       {mapPages.map(page => <IonButton key={page.id} fill="clear" onClick={() => {
-        preparePage(page.id, [window.innerWidth, window.innerHeight]);
+        preparePage(page.id);
         router.push(`/map/${page.id}${search}`, 'forward', 'push');
       }}><IonIcon slot="start" icon={mapOutline} />{page.label}</IonButton>)}
     </nav> : <>
-      <IonButton fill="clear" onClick={() => router.push(`/${search}`, 'back', 'pop')}><IonIcon slot="start" icon={arrowBackOutline} />返回</IonButton>
+      <IonButton fill="clear" onClick={() => { preparePage('comparison'); router.push(`/${search}`, 'back', 'pop'); }}><IonIcon slot="start" icon={arrowBackOutline} />返回</IonButton>
       <span className="floating-page-title">{mapPages.find(page => page.id === pageId)?.label}</span>
     </>}
     <IonButton className="floating-settings" fill="clear" aria-label="打开设置" onClick={() => router.push(`/settings${search}`, 'forward', 'push')}><IonIcon slot="icon-only" icon={settingsOutline} /></IonButton>

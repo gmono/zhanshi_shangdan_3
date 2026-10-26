@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type View from 'ol/View';
 import { initialState } from './config';
 import { MapStage } from './MapStage';
+import { initialCamera } from './initialCamera';
 
 vi.mock('./SplitContainer', () => ({ SplitContainer: () => null }));
 const maps = vi.hoisted(() => [] as Array<{
@@ -116,4 +117,24 @@ it('本机已发出的中间视角不会反向覆盖继续进行的缩放', () =
   screen.rerender(createElement(MapStage, { ...props, state: { ...state, ...patch } }));
   expect(map.view.getZoom()).toBeCloseTo(4.1);
   expect(cancel).not.toHaveBeenCalled();
+});
+
+it('相对视角在横竖屏切换时按各自画布尺寸重新适配，保持有效分辨率', () => {
+  const observers: Array<() => void> = [];
+  vi.stubGlobal('ResizeObserver', class { constructor(callback: () => void) { observers.push(callback); } observe() {} disconnect() {} });
+  const onChange = vi.fn();
+  const camera = { ...initialCamera(), center: [0.65, 0.35] as [number, number], zoom: 1 };
+  const screen = render(createElement(MapStage, { state: { ...state, mapViews: { 'map-1': camera } }, interactive: false, onChange, pageId: 'map-1' }));
+  const target = screen.container.querySelector('.map-target')!;
+  let size = [1194, 834];
+  Object.defineProperties(target, { clientWidth: { get: () => size[0] }, clientHeight: { get: () => size[1] } });
+  const view = maps[0].view;
+  expect(view.isDef()).toBe(true);
+  act(() => observers[0]());
+  expect(view.getResolution()).toBeCloseTo(Math.max(16000 / size[0], 9000 / size[1]) / 2);
+  size = [3840, 2160];
+  act(() => observers[0]());
+  expect(view.getResolution()).toBeCloseTo(Math.max(16000 / size[0], 9000 / size[1]) / 2);
+  expect(view.getCenter()).toEqual([10400, -3150]);
+  expect(onChange).not.toHaveBeenCalled();
 });

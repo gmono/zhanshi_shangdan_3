@@ -1,5 +1,5 @@
 export type Role = 'controller' | 'display';
-export interface MapViewState { center: [number, number]; zoom: number }
+export interface MapViewState { center: [number, number]; zoom: number; space?: 'image-relative' }
 export interface MapState {
   center: [number, number];
   zoom: number;

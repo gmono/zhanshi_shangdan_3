@@ -16,7 +16,8 @@ export function parseState(value) {
     if (!mapViews || typeof mapViews !== 'object' || Array.isArray(mapViews) || Object.keys(mapViews).length > 32) return null;
     for (const [key, camera] of Object.entries(mapViews)) {
       if (!/^map-[1-9][0-9]?$/.test(key) || !cameraValid(camera)) return null;
-      cameras[key] = { center: [...camera.center], zoom: camera.zoom };
+      if (camera.space !== undefined && (camera.space !== 'image-relative' || camera.center.some(n => n < 0 || n > 1))) return null;
+      cameras[key] = { center: [...camera.center], zoom: camera.zoom, ...(camera.space ? { space: camera.space } : {}) };
     }
   }
   return { center: [...center], zoom, showPoints, comparison: page === 'comparison', page, outerSplits: [...outerSplits], innerSplits: innerSplits.map(list => [...list]), splits: [...splits], ...(mapViews !== undefined ? { mapViews: cameras } : {}) };
