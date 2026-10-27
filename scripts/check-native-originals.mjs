@@ -15,7 +15,7 @@ const hash=async file=>createHash('sha256').update(await readFile(file)).digest(
 try{
   start();await poll(r=>r.status===503);report.checks.emptyInstallDirectory=true;
   const originals=await createOriginals(root);
-  const first=await poll((r,b)=>r.ok&&b.maps?.length===5);
+  const first=await poll((r,b)=>r.ok&&b.maps?.length===10);
   assert.equal(first.locations[0].images[0].width,640);assert.equal(first.locations[0].images[1].width,800);report.checks.originalDimensions=true;
   for(const source of originals)assert.equal(await hash(source.file),source.sha256);report.checks.originalBytesUnchanged=true;
   await stop();

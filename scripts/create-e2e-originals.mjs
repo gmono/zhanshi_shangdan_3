@@ -16,12 +16,12 @@ function png(width,height,seed){
 }
 export async function createOriginals(root,vips=process.env.VIPS_BIN||'vips'){
   await mkdir(root,{recursive:true});const originals=[];
-  const places=[['成眉S5线','s5线2023年.png','s5线2026年.png'],['视高镇','视高2023.png','视高镇2026.png'],['兴隆湖','兴隆湖2023.png','兴隆湖2026.png']];
+  const places=[['左屏','1.png','2.png'],['中屏','1.png','2.png'],['右屏','1.png','2.png']];
   for(let i=0;i<places.length;i++)for(let j=0;j<2;j++){
-    const file=join(root,'序厅-遥感图',places[i][0],places[i][j+1]);await mkdir(join(file,'..'),{recursive:true});
+    const file=join(root,places[i][0],places[i][j+1]);await mkdir(join(file,'..'),{recursive:true});
     const width=640+j*160,height=360+j*80;await writeFile(file,png(width,height,i*2+j+1));originals.push({file,width,height});
   }
-  for(let i=1;i<=5;i++){
+  for(let i=1;i<=10;i++){
     const file=join(root,`图${i}.jpg`),temporary=join(root,`.test-${i}.png`);await writeFile(temporary,png(1600,1000,i+10));
     execFileSync(vips,['jpegsave',temporary,file],{stdio:'pipe'});originals.push({file,width:1600,height:1000});
   }

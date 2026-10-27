@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useResourceCatalog } from './useResourceCatalog';
 import { parseCatalog } from './resourceCatalog';
 const image = {url:'/zoomify/abc123/',width:49969,height:27750};
-const catalog = {locations:[1,2,3].map(i=>({id:`place-${i}`,label:`地点${i}`,images:[image,image]})),maps:[1,2,3,4,5].map(i=>({...image,id:`map-${i}`,label:`图${i}`}))};
+const catalog = {locations:[1,2,3].map((i,index)=>({id:`place-${i}`,label:['左屏','中屏','右屏'][index],images:[image,image]})),maps:[1,2,3,4,5,6,7,8,9,10].map(i=>({...image,id:`map-${i}`,label:`图${i}`}))};
 const progress={phase:'processing',completed:3,total:11,currentFile:'图1.jpg',elapsedMs:1234,message:'正在处理原图'};
 class Socket {
   static instances:Socket[]=[];
@@ -38,7 +38,7 @@ it('断线立即显示错误，仅连接失败后重连，新连接直接收到�
   expect(hook.result.current.progress?.phase).toBe('error');expect(hook.result.current.progress?.error).toContain(ws.url);
   act(()=>vi.advanceTimersByTime(1000));expect(Socket.instances).toHaveLength(2);
   act(()=>Socket.instances[1].publish({progress:{...progress,phase:'ready',completed:11},catalog}));
-  expect(hook.result.current.catalog?.maps).toHaveLength(5);expect(hook.result.current.progress?.phase).toBe('ready');
+  expect(hook.result.current.catalog?.maps).toHaveLength(10);expect(hook.result.current.progress?.phase).toBe('ready');
 });
 it('忽略已关闭连接的消息，并取消待执行重连',()=>{
   const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));const ws=Socket.instances[0];
@@ -48,6 +48,8 @@ it('忽略已关闭连接的消息，并取消待执行重连',()=>{
 });
 it('拒绝不合法目录和跨域瓦片地址，支持原图各自尺寸',()=>{
   expect(parseCatalog(catalog)).toEqual(catalog);
+  expect(parseCatalog({...catalog,maps:catalog.maps.slice(0,1)})?.maps).toHaveLength(1);
+  expect(parseCatalog({...catalog,maps:[...catalog.maps,...catalog.maps.slice(0,1)]})).toBeNull();
   expect(parseCatalog({...catalog,maps:[{...image,url:'http://other/'}]})).toBeNull();
   expect(parseCatalog({...catalog,locations:[]})).toBeNull();
   const original={...catalog,locations:catalog.locations.map(p=>({...p,images:[image,{...image,width:79219,height:46250}]}))};

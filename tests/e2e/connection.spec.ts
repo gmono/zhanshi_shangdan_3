@@ -2,8 +2,8 @@ import {test,expect} from '@playwright/test';
 import {WebSocket} from 'ws';
 const host=process.env.E2E_SERVER_IP||'127.0.0.1';
 
-test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换五张大图',async({page,request})=>{
-  test.setTimeout(180000);
+test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换自动发现的十张大图',async({page,request})=>{
+  test.setTimeout(300000);
   const settled = async () => {
     await expect.poll(() => page.locator('ion-router-outlet').evaluate(outlet => outlet.getAnimations({ subtree: true }).some(animation => animation.playState === 'running'))).toBe(false);
   };
@@ -39,6 +39,9 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
   await expect.poll(()=>displayPage.locator('.map-stage[data-page="comparison"] canvas').count()).toBe(6);
   const panel=page.getByRole('region',{name:'地图操作面板'});
   await expect(panel).toBeVisible();
+  const mapButtons=panel.locator('.map-page-buttons ion-button');
+  await expect(mapButtons).toHaveCount(10);
+  expect(await mapButtons.allTextContents()).toEqual(Array.from({length:10},(_,i)=>`图${i+1}`));
   const checkLayout=async()=>{
     const viewport=page.viewportSize()!;
     const box=(await panel.boundingBox())!;
@@ -62,12 +65,13 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
   await page.screenshot({path:`tmp/e2e/${test.info().project.name}-initial.png`});
   const catalog=await request.get(`http://${host}:1421/catalog`);expect(catalog.ok()).toBeTruthy();
   const body=await catalog.json();expect(body.locations[0].images[0].width).toBe(640);expect(body.locations[0].images[1].width).toBe(800);
-  for(const place of body.locations){expect(place.images[0].url).toContain('2023');expect(place.images[1].url).toContain('2026');}
+  expect(body.locations.map((place:any)=>place.label)).toEqual(['左屏','中屏','右屏']);
+  for(const place of body.locations){expect(place.images[0].url).toContain('place-');expect(place.images[0].url).toContain('-1/');expect(place.images[1].url).toContain('-2/');}
   const observer=new WebSocket(`ws://${host}:8787`);const states:any[]=[];const envelopes:any[]=[];
   observer.on('message',b=>{const m=JSON.parse(String(b));envelopes.push(m);if(m.type==='snapshot'&&m.state)states.push(m.state);});
   await new Promise<void>((resolve,reject)=>{observer.once('open',()=>{observer.send(JSON.stringify({id:1,type:'hello',role:'display',room:'exhibition-main-room'}));resolve();});observer.once('error',reject);});
   try{
-    for(let i=1;i<=5;i++){
+    for(let i=1;i<=10;i++){
       await page.getByRole('button',{name:`图${i}`,exact:true}).click();
       await expect(page.locator(`.map-stage[data-page="map-${i}"]`)).toBeVisible();
       await expect.poll(()=>tiles.some(url=>url.includes(`/zoomify/map-${i}/`))).toBeTruthy();

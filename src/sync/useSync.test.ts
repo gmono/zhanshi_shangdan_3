@@ -31,6 +31,12 @@ it('控制端连上已有房间时发布自己的当前页面，而非接管旧�
   expect(result.current.state.page).toBe('map-2');
   expect(JSON.parse(ws.sent.at(-1)!).state.page).toBe('map-2');
 });
+it('直接打开第十张地图时保留路由页面状态', async () => {
+  window.history.replaceState({}, '', '/map/map-10');
+  const { result } = await connect('controller');
+  expect(result.current.state.page).toBe('map-10');
+  window.history.replaceState({}, '', '/');
+});
 it('展示端接收嵌套状态并在断开时保留最后画面', async () => {
   const { result, ws } = await connect('display');
   const state = { ...initialState, page: 'map-3', comparison: false };

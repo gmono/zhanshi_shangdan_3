@@ -44,9 +44,9 @@ try{
   await start(vips);
   const corrupt=(await next(e=>e.progress?.phase==='error')).progress;assert.match(corrupt.error,/退出状态/);assert.match(corrupt.error,/错误输出/);report.checks.corruptImageDetailedError=true;
   await writeFile(first,bytes);
-  const ready=await next(e=>e.progress?.phase==='ready');assert.equal(ready.progress.completed,11);assert.equal(ready.progress.total,11);report.checks.recoveredWithoutRestart=true;
-  assert.ok(current.some(e=>e.progress?.phase==='processing'&&e.progress.currentFile));assert.ok(current.some(e=>e.progress?.completed>0&&e.progress.completed<11));report.checks.liveFileAndCountProgress=true;
-  assert.equal(ready.catalog.maps.length,5);assert.equal(ready.catalog.locations.length,3);report.checks.catalogPushedWithReady=true;
+  const ready=await next(e=>e.progress?.phase==='ready');assert.equal(ready.progress.completed,16);assert.equal(ready.progress.total,16);report.checks.recoveredWithoutRestart=true;
+  assert.ok(current.some(e=>e.progress?.phase==='processing'&&e.progress.currentFile));assert.ok(current.some(e=>e.progress?.completed>0&&e.progress.completed<16));report.checks.liveFileAndCountProgress=true;
+  assert.equal(ready.catalog.maps.length,10);assert.equal(ready.catalog.locations.length,3);report.checks.catalogPushedWithReady=true;
   for(const event of current)if(event.progress.phase==='ready')assert.ok(event.catalog,'ready不能早于目录');
   socket.terminate();current=[];await connect();const replay=await next(e=>e.progress?.phase==='ready');assert.deepEqual(replay.catalog,ready.catalog);report.checks.reconnectReceivesCurrentSnapshot=true;
   report.passed=true;

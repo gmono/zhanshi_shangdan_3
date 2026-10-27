@@ -24,30 +24,36 @@ pub struct Source { pub path: PathBuf, pub label: String, pub key: String }
 #[derive(Debug)]
 pub struct Sources { pub places: Vec<(String, Vec<Source>)>, pub maps: Vec<Source> }
 
+fn numbered_image(folder: &Path, number: u8) -> Result<PathBuf, String> {
+    for extension in ["png", "jpg", "jpeg", "tif", "tiff", "webp", "bmp"] {
+        let candidate = folder.join(format!("{number}.{extension}"));
+        if candidate.is_file() { return Ok(candidate); }
+    }
+    Err(format!("缺少原始图片：{} 中的图片 {number}（支持 png/jpg/jpeg/tif/tiff/webp/bmp）", folder.display()))
+}
+
 pub fn scan(root: &Path) -> Result<Sources, String> {
-    let compare = if root.join("序厅-遥感图").is_dir() { root.join("序厅-遥感图") } else { root.to_path_buf() };
-    let names = [
-        ("成眉S5线", ["s5线2023年.png", "s5线2026年.png"]),
-        ("视高镇", ["视高2023.png", "视高镇2026.png"]),
-        ("兴隆湖", ["兴隆湖2023.png", "兴隆湖2026.png"]),
-    ];
+    let names = ["左屏", "中屏", "右屏"];
     let mut places = Vec::new();
-    for (place_index, (place, files)) in names.iter().enumerate() {
+    for (place_index, place) in names.iter().enumerate() {
         let mut sources = Vec::new();
-        for (index, file) in files.iter().enumerate() {
-            let path = compare.join(*place).join(*file);
-            if !path.is_file() { return Err(format!("缺少原始图片：{}", path.display())); }
-            let year = if index == 0 { "2023" } else { "2026" };
-            sources.push(Source { path, label: year.into(), key: format!("place-{}-{}", place_index + 1, year) });
+        for number in 1..=2 {
+            let path = numbered_image(&root.join(place), number)?;
+            sources.push(Source { path, label: number.to_string(), key: format!("place-{}-{}", place_index + 1, number) });
         }
         places.push((place.to_string(), sources));
     }
     let mut maps = Vec::new();
-    for (index, name) in ["图1.jpg", "图2.jpg", "图3.jpg", "图4.jpg", "图5.jpg"].iter().enumerate() {
-        let path = root.join(*name);
-        if !path.is_file() { return Err(format!("缺少大图：{}", path.display())); }
-        let label = format!("图{}", index + 1);
-        maps.push(Source { path, label: label.clone(), key: format!("map-{}", index + 1) });
+    for index in 1..=10 {
+        let path = root.join(format!("图{index}.jpg"));
+        if !path.is_file() {
+            if index == 1 { return Err(format!("缺少大图：{}", path.display())); }
+            if let Some(later) = (index + 1..=10).map(|number| root.join(format!("图{number}.jpg"))).find(|candidate| candidate.is_file()) {
+                return Err(format!("大图编号不连续：缺少 {}，但发现了 {}", path.display(), later.display()));
+            }
+            break;
+        }
+        maps.push(Source { path, label: format!("图{index}"), key: format!("map-{index}") });
     }
     Ok(Sources { places, maps })
 }
@@ -90,17 +96,17 @@ mod tests {
         let result=prepare_with_progress(&root,&root.join(".cache"),Path::new("missing-vips"),&|value|events.borrow_mut().push(value));
         assert!(result.unwrap_err().contains("缺少原始图片"));
         assert_eq!(events.borrow()[0]["phase"],"scanning");
-        assert_eq!(events.borrow()[0]["total"],11);
+        assert_eq!(events.borrow()[0]["total"],0);
         fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn cached_originals_report_every_file_and_ready() {
         let root=temp();let cache=root.join(".cache");
-        for (place,names) in [("成眉S5线",["s5线2023年.png","s5线2026年.png"]),("视高镇",["视高2023.png","视高镇2026.png"]),("兴隆湖",["兴隆湖2023.png","兴隆湖2026.png"])] {
-            fs::create_dir_all(root.join(place)).unwrap();for name in names {fs::write(root.join(place).join(name),b"original").unwrap();}
+        for place in ["左屏","中屏","右屏"] {
+            fs::create_dir_all(root.join(place)).unwrap();for number in 1..=2 {fs::write(root.join(place).join(format!("{number}.png")),b"original").unwrap();}
         }
-        for i in 1..=5 {fs::write(root.join(format!("图{i}.jpg")),b"original").unwrap();}
+        for i in 1..=10 {fs::write(root.join(format!("图{i}.jpg")),b"original").unwrap();}
         let sources=scan(&root).unwrap();
         for source in sources.places.iter().flat_map(|(_,v)|v.iter()).chain(sources.maps.iter()) {
             let destination=cache.join(&source.key);fs::create_dir_all(destination.join("TileGroup0")).unwrap();
@@ -110,8 +116,26 @@ mod tests {
         }
         let events=std::cell::RefCell::new(Vec::new());
         prepare_with_progress(&root,&cache,Path::new("unused"),&|v|events.borrow_mut().push(v)).unwrap();
-        let events=events.into_inner();assert_eq!(events.iter().filter(|v|v["phase"]=="cached").count(),11);
-        assert_eq!(events.last().unwrap()["phase"],"ready");assert_eq!(events.last().unwrap()["completed"],11);
+        let events=events.into_inner();assert_eq!(events.iter().filter(|v|v["phase"]=="cached").count(),16);
+        assert_eq!(events.last().unwrap()["phase"],"ready");assert_eq!(events.last().unwrap()["completed"],16);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn discovers_only_contiguous_map_numbers_up_to_ten() {
+        let root=temp();
+        for place in ["左屏","中屏","右屏"] {
+            fs::create_dir_all(root.join(place)).unwrap();
+            for number in 1..=2 { fs::write(root.join(place).join(format!("{number}.png")),b"original").unwrap(); }
+        }
+        for number in 1..=3 { fs::write(root.join(format!("图{number}.jpg")),b"original").unwrap(); }
+        assert_eq!(scan(&root).unwrap().maps.len(),3);
+        fs::remove_file(root.join("图2.jpg")).unwrap();
+        let error=scan(&root).unwrap_err();
+        assert!(error.contains("图2.jpg") && error.contains("图3.jpg"));
+        fs::write(root.join("图2.jpg"),b"original").unwrap();
+        for number in 4..=11 { fs::write(root.join(format!("图{number}.jpg")),b"original").unwrap(); }
+        assert_eq!(scan(&root).unwrap().maps.len(),10);
         fs::remove_dir_all(root).unwrap();
     }
 }
@@ -126,12 +150,19 @@ pub fn prepare(root: &Path, cache: &Path, vips: &Path) -> Result<Value, String> 
 
 pub fn prepare_with_progress(root:&Path,cache:&Path,vips:&Path,report:&dyn Fn(Value)) -> Result<Value,String> {
     let started=Instant::now();
-    report(json!({"phase":"scanning","completed":0,"total":11,"elapsedMs":0,"sourcePath":root,"message":"正在检查原始图片目录"}));
-    let sources = scan(root)?;
+    let sources = match scan(root) {
+        Ok(sources) => sources,
+        Err(error) => {
+            report(json!({"phase":"scanning","completed":0,"total":0,"elapsedMs":0,"sourcePath":root,"message":"正在检查原始图片目录","error":error}));
+            return Err(error);
+        }
+    };
+    let total = sources.places.iter().map(|(_, images)| images.len()).sum::<usize>() + sources.maps.len();
+    report(json!({"phase":"scanning","completed":0,"total":total,"elapsedMs":0,"sourcePath":root,"message":"正在检查原始图片目录"}));
     fs::create_dir_all(cache).map_err(|e| e.to_string())?;
     let mut completed=0;
     let mut convert = |source: &Source| -> Result<Value, String> {
-        let notify=|phase:&str,message:&str|report(json!({"phase":phase,"completed":completed,"total":11,"currentFile":source.path.file_name().unwrap_or_default().to_string_lossy(),"sourcePath":source.path,"processorPath":vips,"elapsedMs":started.elapsed().as_millis() as u64,"message":message}));
+        let notify=|phase:&str,message:&str|report(json!({"phase":phase,"completed":completed,"total":total,"currentFile":source.path.file_name().unwrap_or_default().to_string_lossy(),"sourcePath":source.path,"processorPath":vips,"elapsedMs":started.elapsed().as_millis() as u64,"message":message}));
         notify("checking","正在检查原图和缓存");
         let folder = source.key.clone();
         let destination = cache.join(&folder);
@@ -199,7 +230,7 @@ pub fn prepare_with_progress(root:&Path,cache:&Path,vips:&Path,report:&dyn Fn(Va
         value["label"] = json!(image.label);
         maps.push(value);
     }
-    report(json!({"phase":"ready","completed":completed,"total":11,"elapsedMs":started.elapsed().as_millis() as u64,"message":"全部地图准备完成"}));
+    report(json!({"phase":"ready","completed":completed,"total":total,"elapsedMs":started.elapsed().as_millis() as u64,"message":"全部地图准备完成"}));
     Ok(json!({"locations": locations, "maps": maps}))
 }
 

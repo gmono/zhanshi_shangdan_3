@@ -50,16 +50,16 @@ Windows Tauri 程序自身提供展厅服务，不需要另开 Node 服务：Web
 
 iOS 点击“搜索”时发送一次局域网发现请求；Windows 收到后返回自己的 IPv4 地址和“展厅App”名称，不做周期广播。路由器禁止广播、启用访客隔离或跨网段时，搜索可能为空，此时可手动输入 IPv4 地址。未连接 Windows 时，iOS 显示连接提示层，不加载完整地图瓦片。
 
-Windows 地图资源约定：在 Windows 文档目录建立 `展厅App/地图资源/zoomify/`，目录内使用现有 Zoomify 标准结构；每个目录名使用 `地点-年份`，例如 `地点1-2023/TileGroup0/0-0-0.jpg` 和同目录的 `ImageProperties.xml`。程序启动时优先读取这个目录，用户替换资源后重启 Windows 展厅即可生效。资源目录不进入 iOS 包，也不提交 Git。开发环境也兼容程序目录下的 `地图资源/zoomify/`。
+Windows 地图资源约定：在安装目录内、与 `tauronic.exe` 同级的 `地图资源/` 中放入原图。对比图使用 `左屏/1.png`、`左屏/2.png`，中屏和右屏同样命名；`1` 为左侧图片，`2` 为右侧图片。大图按连续编号 `图1.jpg` 至 `图10.jpg` 自动发现，首页按实际数量生成按钮。程序自行生成显示缓存，原图保持只读；替换资源后重启 Windows 展厅即可生效。资源目录不进入 iOS 包，也不提交 Git。
 
 ## 当前百度网盘任务
 
-- 分享：`序厅-遥感图`，包含三个地点的多年份遥感图片；账号登录和会员状态由用户本人完成。
-- 下载目录：`/media/phnics/WorkData/windows-test/share/BaiduDownloads/序厅-遥感图`，Windows中对应 `B:\BaiduDownloads\序厅-遥感图`。
+- 分享中的原图需整理为 `左屏`、`中屏`、`右屏` 三个文件夹，每个文件夹使用 `1`、`2` 编号；大图使用连续的 `图1.jpg` 至 `图10.jpg`。
+- 下载目录：`/media/phnics/WorkData/windows-test/share/BaiduDownloads`，Windows中对应 `B:\BaiduDownloads`。
 - 下载任务已启动为整个文件夹，客户端当前并发5个任务；`.baiduyun.p.downloading` 文件表示仍在下载，不能提前改名或导入。
 - 已完成文件和像素尺寸记录在项目临时文件 `tmp/baidu-image-inventory.json`，下载过程不写入 Git。
-- 用户另提供的 `456.jpg` 原图为 49969×27750、约421MB，已复制为 `assets/source-images/single-maps/map-1.jpg` 至 `map-5.jpg`；五份内容一致。图片目录被 Git 忽略，不提交。
+- 用户另提供的 `456.jpg` 原图为 49969×27750、约421MB，历史上已复制为 `assets/source-images/single-maps/map-1.jpg` 至 `map-5.jpg`；五份内容一致。当前运行时资源命名最多支持 `图1.jpg` 至 `图10.jpg`，图片目录被 Git 忽略，不提交。
 
 
 ## 本次客户图片原文件名适配
-使用网盘原始 序厅-遥感图 文件夹；456.jpg 复制为图1.jpg至图5.jpg，文件名固定，不能改名。确切目录见 scripts/资源命名说明.md。
+资源目录改用 `左屏`、`中屏`、`右屏` 三个文件夹，每个文件夹内使用 `1`、`2` 编号图片；大图按 `图1.jpg` 至 `图10.jpg` 连续编号自动发现。确切目录见 scripts/资源命名说明.md。

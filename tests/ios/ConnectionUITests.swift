@@ -33,7 +33,7 @@ final class ConnectionUITests: XCTestCase {
         app.buttons["返回"].firstMatch.tap()
         XCTAssertTrue(app.buttons["图1"].waitForExistence(timeout: 60), "连接后未加载 Windows 原图目录")
         capture(app, "已连接并加载三图")
-        for number in 1...5 {
+        for number in 1...10 {
             app.buttons["图\(number)"].tap()
             let back = app.buttons["返回"].firstMatch
             XCTAssertTrue(back.waitForExistence(timeout: 15))

@@ -2,7 +2,7 @@
   "locations": [
     {
       "id": "place-1",
-      "label": "北美东部",
+      "label": "左屏",
       "images": [
         "/zoomify/north-america-200401/",
         "/zoomify/north-america-200407/",
@@ -11,7 +11,7 @@
     },
     {
       "id": "place-2",
-      "label": "欧洲与西亚",
+      "label": "中屏",
       "images": [
         "/zoomify/europe-200401/",
         "/zoomify/europe-200407/",
@@ -20,7 +20,7 @@
     },
     {
       "id": "place-3",
-      "label": "东亚",
+      "label": "右屏",
       "images": [
         "/zoomify/east-asia-200401/",
         "/zoomify/east-asia-200407/",

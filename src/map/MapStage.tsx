@@ -30,8 +30,7 @@ export const MapStage = memo(function MapStage({ state, interactive, onChange, p
           const innerSplits = places.map((item, index) => index === placeIndex ? splits : state.innerSplits?.[index] || leftEdgeSplits(item.images.length));
           onChange({ innerSplits });
         }}>
-          {/* 分割线初始在最左时，裁剪容器显示最后一个子面板；反向渲染后初始显示 2023，拖动才露出 2026。 */}
-          {[...place.images].reverse().map((resource, index) => <MapSurface key={resource.url + index} resource={resource} tileHost={tileHost} interactive={false} active={active} showErrors={interactive} fit camera={initialState} onChange={quiet} />)}
+          {place.images.map((resource, index) => <MapSurface key={resource.url + index} resource={resource} tileHost={tileHost} interactive={false} active={active} showErrors={interactive} fit camera={initialState} onChange={quiet} />)}
         </SplitContainer>;
       })}
     </SplitContainer> : <MapSurface resource={mapPage} tileHost={tileHost} interactive={interactive} publishing={state.page === pageId} active={active} showErrors={interactive} fit={false} camera={camera} onChange={next => onChange({ ...(next.space ? {} : next), mapViews: { ...state.mapViews, [pageId]: next } })} />}

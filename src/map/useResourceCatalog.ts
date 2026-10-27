@@ -23,7 +23,7 @@ export function useResourceCatalog(host: string, enabled: boolean, retain: boole
         if (ws) { ws.onmessage = null; ws.onclose = null; ws.onerror = null; ws.close(); }
         socket = undefined;
         const detail = `Windows 地图通知连接中断：${url}`;
-        latest = { ...latest, phase: 'error', completed: latest?.completed || 0, total: latest?.total || 11, elapsedMs: latest?.elapsedMs || 0, message: '地图处理通知连接中断，正在重连', error: detail };
+        latest = { ...latest, phase: 'error', completed: latest?.completed || 0, total: latest?.total || 0, elapsedMs: latest?.elapsedMs || 0, message: '地图处理通知连接中断，正在重连', error: detail };
         setProgress(latest); setMessage(latest.message);
         // 仅连接失败后重连；已连接时没有定时查询。
         retry = setTimeout(connect, 1000);

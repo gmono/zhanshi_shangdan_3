@@ -20,7 +20,7 @@ const storedConnection = (role: Role): Connection => {
 export const isIPv4 = (value: string) => /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/.test(value);
 export function useSync(role: Role) {
   const [state, setState] = useState<MapState>(() => {
-    const match = typeof location !== 'undefined' ? location.pathname.match(/^\/map\/(map-[1-5])$/) : null;
+    const match = typeof location !== 'undefined' ? location.pathname.match(/^\/map\/(map-(?:[1-9]|10))$/) : null;
     return match ? { ...initialState, page: match[1], comparison: false } : initialState;
   });
   const latest = useRef(state);
