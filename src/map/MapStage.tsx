@@ -33,7 +33,7 @@ export const MapStage = memo(function MapStage({ state, interactive, onChange, p
           {place.images.map((resource, index) => <MapSurface key={resource.url + index} resource={resource} tileHost={tileHost} interactive={false} active={active} showErrors={interactive} fit camera={initialState} onChange={quiet} />)}
         </SplitContainer>;
       })}
-    </SplitContainer> : <MapSurface resource={mapPage} tileHost={tileHost} interactive={interactive} publishing={state.page === pageId} active={active} showErrors={interactive} fit={false} camera={camera} onChange={next => onChange({ ...(next.space ? {} : next), mapViews: { ...state.mapViews, [pageId]: next } })} />}
+    </SplitContainer> : <MapSurface resource={mapPage} tileHost={tileHost} interactive={interactive} publishing={state.page === pageId} active={active} showErrors={interactive} fit={false} camera={camera} onChange={next => onChange({ mapViews: { ...state.mapViews, [pageId]: next } })} />}
   </div>;
 }, (previous, next) => previous.pageId === next.pageId && previous.interactive === next.interactive && previous.active === next.active && previous.catalog === next.catalog && previous.tileHost === next.tileHost && previous.onChange === next.onChange
   && (previous.state === next.state || (previous.active === false && next.active === false)));

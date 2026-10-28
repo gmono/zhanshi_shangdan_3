@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseState, canPublish } from './protocol.mjs';
+import { mergeStatePatch, parseState, canPublish } from './protocol.mjs';
 
 describe('双端同步协议', () => {
   it('接受合法相机和图层状态', () => {
@@ -53,5 +53,27 @@ describe('嵌套分割协议约束', () => {
     expect(parseState({ ...state, innerSplits: [[0.7, 0.3], [], []] })).toBeNull();
     expect(parseState({ ...state, innerSplits: [[NaN], [], []] })).toBeNull();
     expect(parseState({ ...state, mapViews: { 'map-1': { center: [Infinity, 1], zoom: 3 } } })).toBeNull();
+  });
+});
+
+describe('页面局部状态补丁', () => {
+  const base = { center: [0, 0], zoom: 3, showPoints: false, page: 'comparison', comparison: true, outerSplits: [1 / 3, 2 / 3], innerSplits: [[0.5], [0.33, 0.67], []], splits: [0.33, 0.67], mapViews: {} };
+  it('来自不同地图页的相机补丁不会覆盖彼此的视角', () => {
+    const map1 = { center: [0.2, 0.4], zoom: 2, space: 'image-relative' };
+    const map2 = { center: [0.8, 0.6], zoom: 4, space: 'image-relative' };
+    const afterFirst = mergeStatePatch(base, 'map-1', { page: 'map-1', comparison: false, mapViews: { 'map-1': map1 } });
+    const afterSecond = mergeStatePatch(afterFirst, 'map-2', { page: 'map-2', comparison: false, mapViews: { 'map-2': map2 } });
+    expect(afterSecond?.mapViews).toEqual({ 'map-1': map1, 'map-2': map2 });
+    expect(afterSecond?.page).toBe('map-2');
+  });
+  it('比较页仅更新指定地点的内层分割线', () => {
+    const first = mergeStatePatch(base, 'comparison', { innerSplits: { 0: [0.25] } });
+    const second = mergeStatePatch(first, 'comparison', { innerSplits: { 2: [0.75, 0.9] } });
+    expect(second?.innerSplits).toEqual([[0.25], [0.33, 0.67], [0.75, 0.9]]);
+  });
+  it('拒绝页面编号与补丁范围不匹配或整组旧分割线', () => {
+    expect(mergeStatePatch(base, 'map-1', { page: 'map-2' })).toBeNull();
+    expect(mergeStatePatch(base, 'map-1', { mapViews: { 'map-2': { center: [0.5, 0.5], zoom: 1 } } })).toBeNull();
+    expect(mergeStatePatch(base, 'comparison', { innerSplits: [[0.1], [0.2], []] })).toBeNull();
   });
 });

@@ -11,5 +11,7 @@ export interface MapState {
   mapViews?: Record<string, MapViewState>;
   splits: [number, number];
 }
+export type StatePatch = Omit<Partial<MapState>, 'innerSplits'> & { innerSplits?: number[][] | Record<string, number[]> };
 export function parseState(value: unknown): MapState | null;
+export function mergeStatePatch(base: unknown, pageId: string, patch: StatePatch | Record<string, unknown>, replace?: boolean): MapState | null;
 export function canPublish(role: string): boolean;

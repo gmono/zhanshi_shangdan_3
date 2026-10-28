@@ -47,7 +47,6 @@ test('房间隔离、只读权限、三图状态同步和重连快照', async t 
   const snapshot = await display.next('snapshot');
   assert.deepEqual(snapshot.state, state);
   assert.equal(snapshot.sourceId, 1);
-  await controller.next('snapshot');
   const late = await connect('display');
   assert.deepEqual((await late.next('snapshot')).state, state);
   const isolated = await connect('display', 'otherroom01');
@@ -56,9 +55,6 @@ test('房间隔离、只读权限、三图状态同步和重连快照', async t 
   assert.equal((await display.next('error')).message, '展示端只读');
   controller.ws.send(JSON.stringify({ type: 'state', state: { ...state, splits: [0.8, 0.2] } }));
   assert.equal((await controller.next('error')).message, '无效地图状态');
-  const second = await connect('controller');
-  const [code] = await once(second.ws, 'close');
-  assert.equal(code, 1008);
   const changed = { ...state, comparison: false, splits: [0.25, 0.75], zoom: 14 };
   controller.ws.send(JSON.stringify({ type: 'state', state: changed }));
   assert.deepEqual((await display.next('snapshot')).state, changed);
@@ -81,4 +77,46 @@ test('失联且不再回应 WebSocket Ping 的控制端释放房间并允许 iOS
   await new Promise(resolve=>setTimeout(resolve,50));
   const recovered=await connect(true);
   assert.equal((await recovered.next('snapshot')).state,null);
+});
+
+test('同一房间允许多个控制端，页面局部补丁按到达顺序合并', async t => {
+  const server = createRelay({ host: '127.0.0.1', port: 0 });
+  await once(server, 'listening');
+  const sockets = [];
+  t.after(async () => { sockets.forEach(ws => ws.terminate()); await new Promise(resolve => server.close(resolve)); });
+  const connect = async role => {
+    const ws = new WebSocket(`ws://127.0.0.1:${server.address().port}/?role=${role}&room=multiroom01`);
+    sockets.push(ws); const next = inbox(ws); await once(ws, 'open'); return { ws, next };
+  };
+  const first = await connect('controller');
+  assert.equal((await first.next('snapshot')).state, null);
+  const second = await connect('controller');
+  assert.equal((await second.next('snapshot')).state, null);
+  const display = await connect('display');
+  assert.equal((await display.next('snapshot')).state, null);
+
+  const seed = { center: [0, 0], zoom: 3, showPoints: false, comparison: true, page: 'comparison', outerSplits: [0.5], innerSplits: [[0.2], [0.3]], mapViews: {}, splits: [0.3, 0.7] };
+  first.ws.send(JSON.stringify({ id: 1, type: 'state', pageId: 'comparison', replace: true, patch: seed }));
+  assert.deepEqual((await second.next('snapshot')).state, seed);
+  assert.deepEqual((await display.next('snapshot')).state, seed);
+
+  const camera1 = { center: [0.25, 0.5], zoom: 4, space: 'image-relative' };
+  first.ws.send(JSON.stringify({ id: 2, type: 'state', pageId: 'map-1', patch: { page: 'map-1', comparison: false, mapViews: { 'map-1': camera1 } } }));
+  const afterFirst = (await display.next('snapshot')).state;
+  assert.equal(afterFirst.page, 'map-1');
+  assert.deepEqual(afterFirst.mapViews['map-1'], camera1);
+
+  const camera2 = { center: [0.75, 0.4], zoom: 2, space: 'image-relative' };
+  second.ws.send(JSON.stringify({ id: 1, type: 'state', pageId: 'map-2', patch: { page: 'map-2', comparison: false, mapViews: { 'map-2': camera2 } } }));
+  const afterSecond = (await display.next('snapshot')).state;
+  assert.equal(afterSecond.page, 'map-2');
+  assert.deepEqual(afterSecond.mapViews, { 'map-1': camera1, 'map-2': camera2 });
+  assert.deepEqual((await first.next('snapshot')).state, afterSecond);
+
+  first.ws.send(JSON.stringify({ id: 3, type: 'state', pageId: 'comparison', patch: { page: 'comparison', comparison: true, innerSplits: { 0: [0.4] } } }));
+  await display.next('snapshot');
+  second.ws.send(JSON.stringify({ id: 2, type: 'state', pageId: 'comparison', patch: { page: 'comparison', comparison: true, innerSplits: { 1: [0.6] } } }));
+  const final = (await display.next('snapshot')).state;
+  assert.deepEqual(final.innerSplits, [[0.4], [0.6]]);
+  assert.deepEqual(final.mapViews, { 'map-1': camera1, 'map-2': camera2 });
 });

@@ -13,9 +13,91 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_millis(25);
 const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(15);
 #[cfg(test)]
 const HEARTBEAT_TIMEOUT: Duration = Duration::from_millis(75);
-#[derive(Default)] struct Room { state: Option<Value>, revision: u64, controller: Option<u64>, peers: HashMap<u64, (String, Tx)> }
+#[derive(Default)] struct Room { state: Option<Value>, revision: u64, peers: HashMap<u64, (String, Tx)> }
 #[derive(Default)] struct Relay { rooms: HashMap<String, Room>, next_id: u64 }
 #[derive(Default)] pub struct RelayHandle { task: Mutex<Option<JoinHandle<()>>> }
+
+fn valid_page(value: &str) -> bool {
+    value == "comparison" || value.strip_prefix("map-").is_some_and(|number| {
+        !number.is_empty() && !number.starts_with('0') && number.len() <= 2 && number.chars().all(|ch| ch.is_ascii_digit())
+    })
+}
+
+fn valid_splits(value: &Value) -> bool {
+    value.as_array().is_some_and(|values| {
+        values.iter().enumerate().all(|(index, value)| {
+            let Some(number) = value.as_f64() else { return false };
+            number.is_finite() && (0.0..=1.0).contains(&number)
+                && (index == 0 || number >= values[index - 1].as_f64().unwrap_or(f64::NAN))
+        })
+    })
+}
+
+fn valid_camera(value: &Value) -> bool {
+    let Some(center) = value.get("center").and_then(Value::as_array) else { return false };
+    if center.len() != 2 || !center.iter().all(|n| n.as_f64().is_some_and(|v| v.is_finite() && v.abs() <= 1e12))
+        || !value.get("zoom").and_then(Value::as_f64).is_some_and(|zoom| zoom.is_finite() && (0.0..=24.0).contains(&zoom)) { return false; }
+    match value.get("space").and_then(Value::as_str) {
+        None => true,
+        Some("image-relative") => center.iter().all(|n| n.as_f64().is_some_and(|v| (0.0..=1.0).contains(&v))),
+        Some(_) => false,
+    }
+}
+
+fn valid_state(value: &Value) -> bool {
+    let Some(object) = value.as_object() else { return false };
+    if !value.get("center").and_then(Value::as_array).is_some_and(|center| center.len() == 2 && center.iter().all(|n| n.as_f64().is_some_and(|v| v.is_finite() && v.abs() <= 1e12)))
+        || !value.get("zoom").and_then(Value::as_f64).is_some_and(|zoom| zoom.is_finite() && (0.0..=24.0).contains(&zoom))
+        || !value.get("showPoints").is_some_and(Value::is_boolean)
+        || !value.get("comparison").is_some_and(Value::is_boolean)
+        || !value.get("splits").is_some_and(valid_splits)
+        || value["splits"].as_array().is_none_or(|splits| splits.len() != 2) { return false; }
+    let legacy = !object.contains_key("page") && !object.contains_key("outerSplits") && !object.contains_key("innerSplits");
+    if legacy { return true; }
+    let Some(page) = value.get("page").and_then(Value::as_str) else { return false };
+    if !valid_page(page) || value["comparison"].as_bool() != Some(page == "comparison")
+        || !value.get("outerSplits").is_some_and(valid_splits) { return false; }
+    let Some(inner) = value.get("innerSplits").and_then(Value::as_array) else { return false };
+    if inner.len() != value["outerSplits"].as_array().unwrap().len() + 1 || !inner.iter().all(valid_splits) { return false; }
+    if let Some(cameras) = value.get("mapViews") {
+        let Some(cameras) = cameras.as_object() else { return false };
+        if cameras.len() > 32 || cameras.iter().any(|(page, camera)| !page.strip_prefix("map-").is_some_and(|n| !n.is_empty() && !n.starts_with('0') && n.len() <= 2 && n.chars().all(|ch| ch.is_ascii_digit())) || !valid_camera(camera)) { return false; }
+    }
+    true
+}
+
+fn merge_state_patch(base: Option<&Value>, page_id: &str, patch: &Value, replace: bool) -> Option<Value> {
+    if !valid_page(page_id) || !patch.is_object() { return None; }
+    let fields = ["center", "zoom", "showPoints", "comparison", "page", "outerSplits", "innerSplits", "mapViews", "splits"];
+    let patch_object = patch.as_object()?;
+    if patch_object.keys().any(|key| !fields.contains(&key.as_str()))
+        || patch.get("page").and_then(Value::as_str).is_some_and(|page| page != page_id) { return None; }
+    if replace { return valid_state(patch).then(|| patch.clone()); }
+    let mut next = base.filter(|state| valid_state(state))?.clone();
+    let next_object = next.as_object_mut()?;
+    for (key, value) in patch_object {
+        if key != "innerSplits" && key != "mapViews" { next_object.insert(key.clone(), value.clone()); }
+    }
+    if let Some(patch_views) = patch.get("mapViews") {
+        if page_id == "comparison" { return None; }
+        let patch_views = patch_views.as_object()?;
+        if patch_views.keys().any(|key| key != page_id || !valid_camera(&patch_views[key])) { return None; }
+        let views = next_object.entry("mapViews").or_insert_with(|| json!({})).as_object_mut()?;
+        for (key, camera) in patch_views { views.insert(key.clone(), camera.clone()); }
+    }
+    if let Some(patch_splits) = patch.get("innerSplits") {
+        if page_id != "comparison" { return None; }
+        let patch_splits = patch_splits.as_object()?;
+        let inner = next_object.get_mut("innerSplits")?.as_array_mut()?;
+        for (index, splits) in patch_splits {
+            if index != "0" && index.starts_with('0') { return None; }
+            let index: usize = index.parse().ok()?;
+            if index >= inner.len() || !valid_splits(splits) { return None; }
+            inner[index] = splits.clone();
+        }
+    }
+    valid_state(&next).then_some(next)
+}
 
 // 所有调用都在 relay 锁内完成，编号与入发送队列顺序一致。
 fn sync_message(mut value: Value) -> Message {
@@ -100,18 +182,15 @@ async fn handle_client(stream: TcpStream, relay: Arc<Mutex<Relay>>) -> Result<()
         all.next_id += 1;
         let id = all.next_id;
         let room = all.rooms.entry(room_id.clone()).or_default();
-        if role == "controller" && room.controller.is_some() {
-            let _ = sink.send(Message::Close(Some(tokio_tungstenite::tungstenite::protocol::CloseFrame {
-                code: 1008.into(), reason: "房间已有控制端".into(),
-            }))).await;
-            return Err("房间已有控制端".into());
-        }
         room.peers.insert(id, (role.clone(), tx.clone()));
-        if role == "controller" { room.controller = Some(id); }
-        let _ = tx.send(sync_message(json!({"type":"snapshot","state":room.state,"revision":room.revision})));
+        let page_id = room.state.as_ref().and_then(|state| state.get("page")).and_then(Value::as_str).unwrap_or("comparison");
+        let _ = tx.send(sync_message(json!({"type":"snapshot","pageId":page_id,"state":room.state,"revision":room.revision})));
+        let controllers = room.peers.values().filter(|(peer_role, _)| peer_role == "controller").count();
         let presence = sync_message(json!({
             "type": "presence",
-            "controller": room.controller.is_some(),
+            "pageId": page_id,
+            "controller": controllers > 0,
+            "controllers": controllers,
             "displays": room.peers.values().filter(|(peer_role, _)| peer_role == "display").count(),
         }));
         for (_, peer) in room.peers.values() { let _ = peer.send(presence.clone()); }
@@ -167,37 +246,55 @@ async fn handle_client(stream: TcpStream, relay: Arc<Mutex<Relay>>) -> Result<()
         let value: Value = serde_json::from_str(message.to_text().unwrap_or("{}")).unwrap_or_default();
         if value.get("type").and_then(Value::as_str) == Some("heartbeat") {
             if let Some(source_id) = value.get("id").and_then(Value::as_u64).filter(|id| *id > 0 && *id <= 9_007_199_254_740_991) {
-                let _ = tx.send(sync_message(json!({"type":"heartbeat_ack","sourceId":source_id})));
+                let page_id = value.get("pageId").and_then(Value::as_str).filter(|page| valid_page(page)).unwrap_or("comparison");
+                let _ = tx.send(sync_message(json!({"type":"heartbeat_ack","pageId":page_id,"sourceId":source_id})));
             }
             continue;
         }
         let mut all = relay.lock().await;
-        let is_active_controller = all.rooms.get(&room_id).is_some_and(|room| room.controller == Some(id));
-        if role != "controller" || !is_active_controller { let _ = tx.send(sync_message(json!({"type":"error","message":"展示端只读"}))); continue; }
+        if role != "controller" {
+            let page_id = value.get("pageId").and_then(Value::as_str).filter(|page| valid_page(page)).unwrap_or("comparison");
+            let _ = tx.send(sync_message(json!({"type":"error","pageId":page_id,"message":"展示端只读"}))); continue;
+        }
         if value.get("type").and_then(Value::as_str) != Some("state") { continue; }
-        let state = value.get("state").cloned().unwrap_or_default(); if !state.is_object() { continue; }
         if let Some(room) = all.rooms.get_mut(&room_id) {
-            // 状态入库、编号、广播在同一个临界区内完成，换页与视角不会拆开。
+            let is_replace = value.get("replace").and_then(Value::as_bool) == Some(true) || value.get("state").is_some();
+            let patch = value.get("patch").or_else(|| value.get("state")).cloned().unwrap_or_default();
+            let page_id = value.get("pageId").and_then(Value::as_str)
+                .or_else(|| patch.get("page").and_then(Value::as_str)).unwrap_or("comparison");
+            let Some(state) = merge_state_patch(room.state.as_ref(), page_id, &patch, is_replace) else {
+                let _ = tx.send(sync_message(json!({"type":"error","pageId":page_id,"message":"无效地图状态补丁或页面编号"})));
+                continue;
+            };
+            // 状态合并、revision 和广播排队都在同一个锁内，保持房间到达顺序。
             room.state = Some(state);
             room.revision += 1;
-            let mut snapshot = json!({"type":"snapshot","state":room.state,"revision":room.revision});
+            let mut snapshot = json!({"type":"snapshot","pageId":room.state.as_ref().and_then(|state| state.get("page")).and_then(Value::as_str).unwrap_or(page_id),"state":room.state,"revision":room.revision});
             if let Some(source_id) = value.get("id").and_then(Value::as_u64).filter(|n| *n > 0 && *n <= 9_007_199_254_740_991) {
                 snapshot["sourceId"] = json!(source_id);
             }
             let payload = sync_message(snapshot);
-            for (_, peer) in room.peers.values() { let _ = peer.send(payload.clone()); }
+            for (peer_id, (_, peer)) in &room.peers { if *peer_id != id { let _ = peer.send(payload.clone()); } }
+            let mut acknowledgement = json!({"type":"state_ack","pageId":room.state.as_ref().and_then(|state| state.get("page")).and_then(Value::as_str).unwrap_or(page_id),"state":room.state,"revision":room.revision});
+            if let Some(source_id) = value.get("id").and_then(Value::as_u64).filter(|n| *n > 0 && *n <= 9_007_199_254_740_991) {
+                acknowledgement["sourceId"] = json!(source_id);
+            }
+            let _ = tx.send(sync_message(acknowledgement));
         }
     }
     writer.abort();
     let mut all = relay.lock().await;
     if let Some(room) = all.rooms.get_mut(&room_id) {
         room.peers.remove(&id);
-        if room.controller == Some(id) { room.controller = None; }
         if room.peers.is_empty() { all.rooms.remove(&room_id); }
         else if let Some(room) = all.rooms.get(&room_id) {
+            let controllers = room.peers.values().filter(|(peer_role, _)| peer_role == "controller").count();
+            let page_id = room.state.as_ref().and_then(|state| state.get("page")).and_then(Value::as_str).unwrap_or("comparison");
             let presence = sync_message(json!({
                 "type": "presence",
-                "controller": room.controller.is_some(),
+                "pageId": page_id,
+                "controller": controllers > 0,
+                "controllers": controllers,
                 "displays": room.peers.values().filter(|(peer_role, _)| peer_role == "display").count(),
             }));
             for (_, peer) in room.peers.values() { let _ = peer.send(presence.clone()); }
@@ -247,16 +344,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_controller_that_answers_pings_keeps_exclusive_room_ownership() {
+    async fn multiple_controllers_share_the_room_and_merge_page_patches() {
         let (handle, address) = start_test_relay().await;
-        let mut connected = connect_controller(address).await;
-        assert!(matches!(next_message(&mut connected).await, Message::Text(_)));
-        let reader = tokio::spawn(async move { while connected.next().await.is_some() {} });
-        sleep(Duration::from_millis(250)).await;
-
-        let mut duplicate = connect_controller(address).await;
-        assert!(matches!(next_message(&mut duplicate).await, Message::Close(_)));
-        reader.abort();
+        let mut first = connect_controller(address).await;
+        assert!(matches!(next_message(&mut first).await, Message::Text(_)));
+        let mut second = connect_controller(address).await;
+        assert!(matches!(next_message(&mut second).await, Message::Text(_)));
+        let seed = json!({"center":[0,0],"zoom":3,"showPoints":false,"comparison":true,"page":"comparison","outerSplits":[0.5],"innerSplits":[[0.2],[0.3]],"mapViews":{},"splits":[0.3,0.7]});
+        first.send(Message::Text(json!({"id":1,"type":"state","pageId":"comparison","replace":true,"patch":seed}).to_string().into())).await.unwrap();
+        let received = loop {
+            let Message::Text(text) = next_message(&mut second).await else { continue };
+            let message: Value = serde_json::from_str(&text).unwrap();
+            if message["type"] == "snapshot" && message["state"].is_object() { break message; }
+        };
+        assert_eq!(received["state"], seed);
+        let camera = json!({"center":[0.75,0.4],"zoom":2,"space":"image-relative"});
+        second.send(Message::Text(json!({"id":1,"type":"state","pageId":"map-2","patch":{"page":"map-2","comparison":false,"mapViews":{"map-2":camera}}}).to_string().into())).await.unwrap();
+        let received = loop {
+            let Message::Text(text) = next_message(&mut first).await else { continue };
+            let message: Value = serde_json::from_str(&text).unwrap();
+            if message["type"] == "snapshot" && message["state"]["page"] == "map-2" { break message; }
+        };
+        assert_eq!(received["state"]["mapViews"]["map-2"], camera);
+        first.send(Message::Text(json!({"id":2,"type":"state","pageId":"comparison","patch":{"page":"comparison","comparison":true,"innerSplits":{"0":[0.4]}}}).to_string().into())).await.unwrap();
+        let received = loop {
+            let Message::Text(text) = next_message(&mut second).await else { continue };
+            let message: Value = serde_json::from_str(&text).unwrap();
+            if message["type"] == "snapshot" && message["state"]["page"] == "comparison" { break message; }
+        };
+        assert_eq!(received["state"]["innerSplits"], json!([[0.4],[0.3]]));
+        assert_eq!(received["state"]["mapViews"]["map-2"], camera);
         stop(handle).await;
     }
 

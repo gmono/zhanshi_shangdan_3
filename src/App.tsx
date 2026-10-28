@@ -58,18 +58,18 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
   const catalog = resources.catalog;
   const preparePage = useCallback((targetPage: string) => {
     if (targetPage === 'comparison') {
-      update({ ...initialState, outerSplits: evenSplits(catalog?.locations.length || 3), innerSplits: catalog ? catalog.locations.map(place => leftEdgeSplits(place.images.length)) : initialState.innerSplits });
+      update({ ...initialState, outerSplits: evenSplits(catalog?.locations.length || 3), innerSplits: catalog ? catalog.locations.map(place => leftEdgeSplits(place.images.length)) : initialState.innerSplits }, targetPage, { replace: true });
       preparedPage.current = targetPage;
       return;
     }
     const map = catalog?.maps.find(item => item.id === targetPage);
     const camera = map ? initialCamera() : undefined;
-    update({ page: targetPage, comparison: targetPage === 'comparison', ...(camera ? {
+    update({ page: targetPage, comparison: false, ...(camera ? {
       mapViews: { ...latestState.current.mapViews, [targetPage]: camera },
-    } : {}) });
+    } : {}) }, targetPage);
     preparedPage.current = targetPage;
   }, [catalog, update]);
-  useEffect(() => { if (catalog) update({ outerSplits: evenSplits(catalog.locations.length), innerSplits: catalog.locations.map(p => leftEdgeSplits(p.images.length)) }); }, [catalog, update]);
+  useEffect(() => { if (catalog) update({ outerSplits: evenSplits(catalog.locations.length), innerSplits: catalog.locations.map(p => leftEdgeSplits(p.images.length)) }, 'comparison', { activate: false }); }, [catalog, update]);
   const pageId = route.pathname === '/' ? 'comparison' : catalog?.maps.find(page => route.pathname === `/map/${page.id}`)?.id;
   // 只由当前路由发布页面状态；缓存中的旧页面不会回写自己的页面 ID。
   useLayoutEffect(() => {
@@ -88,11 +88,12 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
 function MapPage({ state, update, pageId, connected, tileHost, catalog, resourceMessage, progress }: { state: Sync['state']; update: Sync['update']; pageId: string; connected: boolean; tileHost: string; catalog: ResourceCatalog | null; resourceMessage: string; progress?: ResourceProgress | null }) {
   const router = useIonRouter();
   const frame = useRef<HTMLElement>(null);
+  const change = useCallback((patch: Parameters<Sync['update']>[0]) => update(patch, pageId), [pageId, update]);
   useIonViewWillLeave(() => { if (frame.current) frame.current.style.display = 'none'; }, []);
   useIonViewWillEnter(() => { if (frame.current) frame.current.style.display = 'block'; }, []);
   return <IonPage className="controller-page">
     <IonContent className="controller-content" scrollY={false} scrollX={false}><main className="map-frame" ref={frame}>{connected && catalog ? <>
-      <MapStage state={state} interactive active onChange={update} pageId={pageId} tileHost={tileHost} catalog={catalog} />
+      <MapStage state={state} interactive active onChange={change} pageId={pageId} tileHost={tileHost} catalog={catalog} />
       {progress?.phase === 'error' && <ResourceStatus message={resourceMessage} progress={progress} />}
     </> : connected ? <ResourceStatus message={resourceMessage} progress={progress} /> : <IonButton className="connection-required" fill="clear" expand="full" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}>连接 Windows 大屏</IonButton>}</main></IonContent>
   </IonPage>;
