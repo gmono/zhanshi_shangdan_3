@@ -2,6 +2,29 @@ import {test,expect} from '@playwright/test';
 import {WebSocket} from 'ws';
 const host=process.env.E2E_SERVER_IP||'127.0.0.1';
 
+test('上一次 iOS 连接断网失去响应后，新连接等待母线清理并自动恢复',async({page})=>{
+  test.setTimeout(60000);
+  const stale=new WebSocket(`ws://${host}:8787`,{autoPong:false});
+  stale.on('error',()=>{});
+  const snapshot=new Promise<void>((resolve,reject)=>{
+    stale.on('open',()=>stale.send(JSON.stringify({id:1,type:'hello',role:'controller',room:'exhibition-main-room'})));
+    stale.on('message',raw=>{if(JSON.parse(String(raw)).type==='snapshot')resolve();});
+    stale.once('error',reject);
+  });
+  try{
+    await snapshot;
+    await page.goto('/?role=controller');
+    await page.getByRole('button',{name:'连接 Windows 大屏'}).click();
+    await page.getByRole('textbox',{name:'Windows 地址',exact:true}).fill(host);
+    await page.getByRole('button',{name:'保存连接',exact:true}).click();
+    await expect(page.getByText(/已连接 \d+ 块大屏/)).toBeVisible({timeout:30000});
+    await page.locator('.settings-page').getByRole('button',{name:'返回',exact:true}).click();
+    await expect(page.locator('.map-stage[data-page="comparison"]')).toBeVisible();
+  }finally{
+    stale.terminate();
+  }
+});
+
 test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换自动发现的十张大图',async({page,request})=>{
   test.setTimeout(300000);
   const settled = async () => {
