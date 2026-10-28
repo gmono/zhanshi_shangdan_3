@@ -17,7 +17,8 @@ export function parseProgress(value: unknown): ResourceProgress | null {
   if (!value || typeof value !== 'object') return null;
   const progress = value as ResourceProgress;
   return typeof progress.phase === 'string' && typeof progress.message === 'string'
-    && Number.isFinite(progress.completed) && Number.isFinite(progress.total) && progress.total > 0
+    && Number.isFinite(progress.completed) && Number.isFinite(progress.total) && progress.total >= 0
+    && (progress.phase !== 'ready' || progress.total > 0)
     && progress.completed >= 0 && progress.completed <= progress.total
     && Number.isFinite(progress.elapsedMs) && progress.elapsedMs >= 0 ? progress : null;
 }

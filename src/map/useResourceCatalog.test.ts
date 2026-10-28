@@ -9,6 +9,7 @@ const progress={phase:'processing',completed:3,total:11,currentFile:'图1.jpg',e
 class Socket {
   static instances:Socket[]=[];
   onmessage:((event:{data:string})=>void)|null=null;
+  onopen:(()=>void)|null=null;
   onclose:(()=>void)|null=null;
   onerror:(()=>void)|null=null;
   close=vi.fn();
@@ -56,9 +57,45 @@ it('拒绝不合法目录和跨域瓦片地址，支持原图各自尺寸',()=>{
   expect(parseCatalog(original)).toEqual(original);
 });
 
-it('ready 必须同时带合法目录；坏消息不能覆盖有效进度',()=>{
+it('ready 缺少合法目录时明确显示错误，重连后仍能收到完成目录',()=>{
   const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));const ws=Socket.instances[0];
   act(()=>ws.publish({progress,catalog:null}));
   act(()=>ws.publish({progress:{...progress,phase:'ready',completed:11},catalog:null}));
-  expect(hook.result.current.progress?.phase).toBe('processing');expect(hook.result.current.catalog).toBeNull();
+  expect(hook.result.current.progress?.phase).toBe('error');expect(hook.result.current.catalog).toBeNull();
+  expect(hook.result.current.progress?.error).toContain('目录');
+  expect(hook.result.current.progress?.error).toContain(ws.url);
+  act(()=>vi.advanceTimersByTime(1000));
+  act(()=>Socket.instances[1].publish({progress:{...progress,phase:'ready',completed:11},catalog}));
+  expect(hook.result.current.catalog).toEqual(catalog);
+});
+it('直接显示生产服务总数为零的缺图错误和日志，不停留在连接文案',()=>{
+  const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));
+  const error={phase:'error',completed:0,total:0,elapsedMs:0,message:'地图准备失败，修复文件后自动重试',error:'缺少原始图片：C:\\地图资源\\左屏 中的图片 1',logPath:'C:\\地图资源\\.cache\\资源处理记录.txt'};
+  act(()=>Socket.instances[0].publish({progress:error,catalog:null}));
+  expect(hook.result.current.progress).toEqual(error);expect(hook.result.current.message).toBe(error.message);
+  act(()=>vi.advanceTimersByTime(600000));
+  expect(Socket.instances).toHaveLength(1);expect(fetch).not.toHaveBeenCalled();
+});
+it('通知连接十秒未建立即明确显示地址和连接超时，之后重试',()=>{
+  const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));const ws=Socket.instances[0];
+  act(()=>vi.advanceTimersByTime(9999));expect(hook.result.current.progress).toBeNull();
+  act(()=>vi.advanceTimersByTime(1));
+  expect(hook.result.current.progress?.phase).toBe('error');
+  expect(hook.result.current.progress?.error).toContain('连接超时');
+  expect(hook.result.current.progress?.error).toContain(ws.url);expect(ws.close).toHaveBeenCalled();
+  act(()=>vi.advanceTimersByTime(1000));expect(Socket.instances).toHaveLength(2);
+});
+it('连接已建立但十秒没有首条状态时显示错误；退出取消所有超时和重连',()=>{
+  const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));const ws=Socket.instances[0];
+  act(()=>ws.onopen?.());expect(hook.result.current.message).toContain('等待');
+  act(()=>vi.advanceTimersByTime(10000));
+  expect(hook.result.current.progress?.error).toContain('未收到');
+  expect(hook.result.current.progress?.error).toContain(ws.url);
+  hook.unmount();expect(vi.getTimerCount()).toBe(0);
+});
+it('非法JSON明确报告消息错误及地址，避免无期限等待',()=>{
+  const hook=renderHook(()=>useResourceCatalog('192.168.1.2',true,false));const ws=Socket.instances[0];
+  act(()=>ws.onmessage?.({data:'bad-json'}));
+  expect(hook.result.current.progress?.phase).toBe('error');
+  expect(hook.result.current.progress?.error).toContain('JSON');expect(hook.result.current.progress?.error).toContain(ws.url);
 });

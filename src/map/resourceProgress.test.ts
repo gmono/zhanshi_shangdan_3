@@ -22,3 +22,12 @@ it('错误界面完整显示错误、处理器和日志路径',()=>{
 it('拒绝非法进度数值',()=>{
   expect(parseProgress({...progress,completed:12})).toBeNull();expect(parseProgress({...progress,elapsedMs:-1})).toBeNull();expect(parseProgress(progress)).toEqual(progress);
 });
+it('未统计数量时也接收缺少原图的详细错误，不把零总数误判成坏消息',()=>{
+  const error={phase:'error',completed:0,total:0,elapsedMs:0,message:'地图准备失败',error:'缺少原始图片：C:\\展厅App\\地图资源\\左屏 中的图片 1',sourcePath:'C:\\展厅App\\地图资源'};
+  expect(parseProgress(error)).toEqual(error);
+  const html=renderToStaticMarkup(createElement(ResourceStatus,{message:'',progress:error}));
+  expect(html).toContain('地图准备失败');expect(html).toContain(error.error);
+  expect(html).not.toContain('NaN');expect(html).not.toContain('Infinity');expect(html).not.toContain('<progress');
+  expect(parseProgress({...error,total:-1})).toBeNull();
+  expect(parseProgress({...error,phase:'ready'})).toBeNull();
+});

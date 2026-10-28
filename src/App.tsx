@@ -42,7 +42,8 @@ function DisplayApp({ sync }: { sync: Sync }) {
     if (isTauri()) void invoke('set_display_fullscreen', { enabled: true }).catch(() => undefined);
   }, []);
   return <IonPage className="display-page"><IonContent className="display-content" scrollY={false} scrollX={false}>
-    {catalog ? <MapStage state={sync.state} interactive={false} onChange={sync.update} catalog={catalog} tileHost="127.0.0.1" /> : <ResourceStatus message={resources.message} progress={resources.progress} />}
+    {catalog && <MapStage state={sync.state} interactive={false} onChange={sync.update} catalog={catalog} tileHost="127.0.0.1" />}
+    {(!catalog || resources.progress?.phase === 'error') && <ResourceStatus message={resources.message} progress={resources.progress} />}
   </IonContent></IonPage>;
 }
 
@@ -90,7 +91,10 @@ function MapPage({ state, update, pageId, connected, tileHost, catalog, resource
   useIonViewWillLeave(() => { if (frame.current) frame.current.style.display = 'none'; }, []);
   useIonViewWillEnter(() => { if (frame.current) frame.current.style.display = 'block'; }, []);
   return <IonPage className="controller-page">
-    <IonContent className="controller-content" scrollY={false} scrollX={false}><main className="map-frame" ref={frame}>{connected && catalog ? <MapStage state={state} interactive active onChange={update} pageId={pageId} tileHost={tileHost} catalog={catalog} /> : connected ? <ResourceStatus message={resourceMessage} progress={progress} /> : <IonButton className="connection-required" fill="clear" expand="full" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}>连接 Windows 大屏</IonButton>}</main></IonContent>
+    <IonContent className="controller-content" scrollY={false} scrollX={false}><main className="map-frame" ref={frame}>{connected && catalog ? <>
+      <MapStage state={state} interactive active onChange={update} pageId={pageId} tileHost={tileHost} catalog={catalog} />
+      {progress?.phase === 'error' && <ResourceStatus message={resourceMessage} progress={progress} />}
+    </> : connected ? <ResourceStatus message={resourceMessage} progress={progress} /> : <IonButton className="connection-required" fill="clear" expand="full" onClick={() => router.push(`/settings${location.search}`, 'forward', 'push')}>连接 Windows 大屏</IonButton>}</main></IonContent>
   </IonPage>;
 }
 
