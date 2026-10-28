@@ -10,10 +10,10 @@ class FakeSocket {
   sent: string[] = [];
   onopen?: () => void;
   onmessage?: (event: { data: string }) => void;
-  onclose?: (event: { code: number }) => void;
+  onclose?: (event: { code: number; reason?: string }) => void;
   constructor() { FakeSocket.instances.push(this); }
   send(data: string) { this.sent.push(data); }
-  close() { this.readyState = 3; }
+  close = vi.fn((code = 1000, reason = '') => { this.readyState = 3; this.onclose?.({ code, reason }); });
   snapshot(state: unknown) { this.onmessage?.({ data: JSON.stringify({ type: 'snapshot', state }) }); }
 }
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); localStorage.clear(); FakeSocket.instances = []; });
@@ -36,6 +36,42 @@ it('直接打开第十张地图时保留路由页面状态', async () => {
   const { result } = await connect('controller');
   expect(result.current.state.page).toBe('map-10');
   window.history.replaceState({}, '', '/');
+});
+it('同步连接心跳未应答时主动关闭旧连接以便网络恢复后重连', async () => {
+  const { result, ws } = await connect('controller');
+  vi.useFakeTimers();
+  act(() => ws.onopen?.());
+  expect(JSON.parse(ws.sent[0])).toMatchObject({ type: 'hello', role: 'controller' });
+  act(() => vi.advanceTimersByTime(5000));
+  expect(JSON.parse(ws.sent.at(-1)!)).toMatchObject({ type: 'heartbeat', role: 'controller' });
+  const heartbeat = JSON.parse(ws.sent.at(-1)!);
+  expect(Number.isSafeInteger(heartbeat.id)).toBe(true);
+  act(() => vi.advanceTimersByTime(15000));
+  expect(ws.close).toHaveBeenCalledWith(4000, expect.stringContaining('心跳'));
+  expect(result.current.status).toBe('重连中');
+});
+it('收到对应心跳应答后继续保活，不误关仍连接的控制端', async () => {
+  const { ws } = await connect('controller');
+  vi.useFakeTimers();
+  act(() => ws.onopen?.());
+  act(() => vi.advanceTimersByTime(5000));
+  const heartbeat = JSON.parse(ws.sent.at(-1)!);
+  act(() => ws.onmessage?.({ data: JSON.stringify({ type: 'heartbeat_ack', sourceId: heartbeat.id }) }));
+  act(() => vi.advanceTimersByTime(15000));
+  expect(ws.close).not.toHaveBeenCalled();
+  expect(ws.sent.map(raw => JSON.parse(raw).type).filter(type => type === 'heartbeat').length).toBeGreaterThanOrEqual(2);
+});
+it('母线暂拒已有控制连接时保留当前状态并持续重试', async () => {
+  const { result, ws } = await connect('controller');
+  act(() => ws.onopen?.());
+  const state = { ...initialState, page: 'map-7', comparison: false };
+  act(() => result.current.update(state));
+  vi.useFakeTimers();
+  act(() => ws.onclose?.({ code: 1008, reason: '房间已有控制端' }));
+  expect(result.current.status).toBe('等待 Windows 释放旧控制连接');
+  expect(result.current.state).toEqual(state);
+  act(() => vi.advanceTimersByTime(3000));
+  expect(FakeSocket.instances).toHaveLength(2);
 });
 it('展示端接收嵌套状态并在断开时保留最后画面', async () => {
   const { result, ws } = await connect('display');

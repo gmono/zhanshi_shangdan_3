@@ -40,6 +40,9 @@ test('房间隔离、只读权限、三图状态同步和重连快照', async t 
   assert.equal((await display.next('snapshot')).state, null);
   const controller = await connect('controller');
   await controller.next('snapshot');
+  controller.ws.send(JSON.stringify({ type: 'heartbeat', id: 77 }));
+  const heartbeat = await controller.next('heartbeat_ack');
+  assert.equal(heartbeat.sourceId, 77);
   controller.ws.send(JSON.stringify({ type: 'state', id: 1, state }));
   const snapshot = await display.next('snapshot');
   assert.deepEqual(snapshot.state, state);
@@ -62,4 +65,20 @@ test('房间隔离、只读权限、三图状态同步和重连快照', async t 
   controller.ws.close(); await once(controller.ws, 'close');
   const reconnected = await connect('controller');
   assert.deepEqual((await reconnected.next('snapshot')).state, changed);
+});
+
+test('失联且不再回应 WebSocket Ping 的控制端释放房间并允许 iOS 重连', { timeout: 3000 }, async t => {
+  const server = createRelay({ host: '127.0.0.1', port: 0, heartbeatIntervalMs: 10, heartbeatTimeoutMs: 30 });
+  await once(server, 'listening');
+  const sockets = [];
+  t.after(async () => { sockets.forEach(ws => ws.terminate()); await new Promise(resolve => server.close(resolve)); });
+  const connect = async autoPong => {
+    const ws = new WebSocket(`ws://127.0.0.1:${server.address().port}/?role=controller&room=iosreconnect` , { autoPong });
+    sockets.push(ws);const next=inbox(ws);await once(ws,'open');return{ws,next};
+  };
+  const stale=await connect(false);
+  assert.equal((await stale.next('snapshot')).state,null);
+  await new Promise(resolve=>setTimeout(resolve,50));
+  const recovered=await connect(true);
+  assert.equal((await recovered.next('snapshot')).state,null);
 });

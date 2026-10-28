@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { parseState, canPublish } from '../src/sync/protocol.mjs';
 
-export function createRelay({ port = 8787, host = '0.0.0.0' } = {}) {
+export function createRelay({ port = 8787, host = '0.0.0.0', heartbeatIntervalMs = 5000, heartbeatTimeoutMs = 15000 } = {}) {
   const rooms = new Map();
   const wss = new WebSocketServer({ port, host, maxPayload: 4096 });
   let messageId = 0;
@@ -33,10 +33,21 @@ export function createRelay({ port = 8787, host = '0.0.0.0' } = {}) {
     send(client, { type: 'snapshot', state: room.state, revision: room.revision });
     presence();
     client.on('error', () => {});
+    let lastPongAt = Date.now();
+    const heartbeat = setInterval(() => {
+      if (client.readyState !== WebSocket.OPEN) { clearInterval(heartbeat); return; }
+      if (Date.now() - lastPongAt >= heartbeatTimeoutMs) { client.terminate(); return; }
+      client.ping();
+    }, heartbeatIntervalMs);
+    client.on('pong', () => { lastPongAt = Date.now(); });
     client.on('message', raw => {
-      if (!canPublish(role)) { send(client, { type: 'error', message: '展示端只读' }); return; }
       let message;
       try { message = JSON.parse(raw.toString()); } catch { send(client, { type: 'error', message: '无效消息' }); return; }
+      if (message.type === 'heartbeat') {
+        if (Number.isSafeInteger(message.id) && message.id > 0) send(client, { type: 'heartbeat_ack', sourceId: message.id });
+        return;
+      }
+      if (!canPublish(role)) { send(client, { type: 'error', message: '展示端只读' }); return; }
       const state = message.type === 'state' ? parseState(message.state) : null;
       if (!state) { send(client, { type: 'error', message: '无效地图状态' }); return; }
       room.state = state;
@@ -45,6 +56,7 @@ export function createRelay({ port = 8787, host = '0.0.0.0' } = {}) {
         ...(Number.isSafeInteger(message.id) && message.id > 0 ? { sourceId: message.id } : {}) });
     });
     client.on('close', () => {
+      clearInterval(heartbeat);
       room.clients.delete(client);
       if (room.controller === client) room.controller = null;
       presence();

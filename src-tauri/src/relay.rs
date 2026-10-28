@@ -1,10 +1,18 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use std::{collections::HashMap, sync::{Arc, atomic::{AtomicU64, Ordering}}};
-use tokio::{net::{TcpListener, TcpStream, UdpSocket}, sync::{mpsc, Mutex}, task::JoinHandle, time::{timeout_at, Duration, Instant}};
+use tokio::{net::{TcpListener, TcpStream, UdpSocket}, sync::{mpsc, oneshot, Mutex}, task::JoinHandle, time::{interval, timeout_at, Duration, Instant, MissedTickBehavior}};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
 type Tx = mpsc::UnboundedSender<Message>;
+#[cfg(not(test))]
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
+#[cfg(test)]
+const HEARTBEAT_INTERVAL: Duration = Duration::from_millis(25);
+#[cfg(not(test))]
+const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(15);
+#[cfg(test)]
+const HEARTBEAT_TIMEOUT: Duration = Duration::from_millis(75);
 #[derive(Default)] struct Room { state: Option<Value>, revision: u64, controller: Option<u64>, peers: HashMap<u64, (String, Tx)> }
 #[derive(Default)] struct Relay { rooms: HashMap<String, Room>, next_id: u64 }
 #[derive(Default)] pub struct RelayHandle { task: Mutex<Option<JoinHandle<()>>> }
@@ -109,10 +117,60 @@ async fn handle_client(stream: TcpStream, relay: Arc<Mutex<Relay>>) -> Result<()
         for (_, peer) in room.peers.values() { let _ = peer.send(presence.clone()); }
         id
     };
-    let writer = tokio::spawn(async move { while let Some(message) = rx.recv().await { if sink.send(message).await.is_err() { break; } } });
-    while let Some(incoming) = stream.next().await {
-        let Ok(message) = incoming else {break}; if message.is_close() {break;} if !message.is_text() { continue; }
+    let (pong_tx, mut pong_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+    let (writer_stopped, mut writer_stopped_rx) = oneshot::channel();
+    let writer = tokio::spawn(async move {
+        let mut heartbeats = interval(HEARTBEAT_INTERVAL);
+        heartbeats.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        heartbeats.tick().await;
+        let mut sequence = 0_u64;
+        let mut pending_ping: Option<(Vec<u8>, Instant)> = None;
+        loop {
+            tokio::select! {
+                message = rx.recv() => match message {
+                    Some(message) => if sink.send(message).await.is_err() { break; },
+                    None => break,
+                },
+                pong = pong_rx.recv() => if let Some(pong) = pong {
+                    if pending_ping.as_ref().is_some_and(|(payload, _)| *payload == pong) {
+                        pending_ping = None;
+                    }
+                },
+                _ = heartbeats.tick() => {
+                    if pending_ping.as_ref().is_some_and(|(_, sent)| sent.elapsed() >= HEARTBEAT_TIMEOUT) {
+                        break;
+                    }
+                    if pending_ping.is_none() {
+                        sequence = sequence.wrapping_add(1);
+                        let payload = sequence.to_be_bytes().to_vec();
+                        if sink.send(Message::Ping(payload.clone().into())).await.is_err() { break; }
+                        pending_ping = Some((payload, Instant::now()));
+                    }
+                }
+            }
+        }
+        let _ = writer_stopped.send(());
+    });
+    loop {
+        let incoming = tokio::select! {
+            _ = &mut writer_stopped_rx => break,
+            incoming = stream.next() => incoming,
+        };
+        let Some(incoming) = incoming else {break};
+        let Ok(message) = incoming else {break};
+        if message.is_close() {break;}
+        if let Message::Pong(payload) = message {
+            let _ = pong_tx.send(payload.to_vec());
+            continue;
+        }
+        if !message.is_text() { continue; }
         let value: Value = serde_json::from_str(message.to_text().unwrap_or("{}")).unwrap_or_default();
+        if value.get("type").and_then(Value::as_str) == Some("heartbeat") {
+            if let Some(source_id) = value.get("id").and_then(Value::as_u64).filter(|id| *id > 0 && *id <= 9_007_199_254_740_991) {
+                let _ = tx.send(sync_message(json!({"type":"heartbeat_ack","sourceId":source_id})));
+            }
+            continue;
+        }
         let mut all = relay.lock().await;
         let is_active_controller = all.rooms.get(&room_id).is_some_and(|room| room.controller == Some(id));
         if role != "controller" || !is_active_controller { let _ = tx.send(sync_message(json!({"type":"error","message":"展示端只读"}))); continue; }
@@ -146,4 +204,77 @@ async fn handle_client(stream: TcpStream, relay: Arc<Mutex<Relay>>) -> Result<()
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures_util::{SinkExt, StreamExt};
+    use tokio::{time::{sleep, timeout}, net::TcpListener};
+    use tokio_tungstenite::connect_async;
+
+    async fn connect_controller(address: std::net::SocketAddr) -> tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>> {
+        let (mut socket, _) = connect_async(format!("ws://{address}")).await.unwrap();
+        socket.send(Message::Text(json!({"role":"controller","room":"heartbeat-test"}).to_string().into())).await.unwrap();
+        socket
+    }
+
+    async fn next_message(socket: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>) -> Message {
+        timeout(Duration::from_secs(2), socket.next()).await.unwrap().unwrap().unwrap()
+    }
+
+    async fn start_test_relay() -> (Arc<RelayHandle>, std::net::SocketAddr) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        let handle = Arc::new(RelayHandle::default());
+        start_on(handle.clone(), address).await.unwrap();
+        (handle, address)
+    }
+
+    #[tokio::test]
+    async fn a_controller_that_stops_answering_pings_releases_its_room_slot() {
+        let (handle, address) = start_test_relay().await;
+        let mut disconnected = connect_controller(address).await;
+        assert!(matches!(next_message(&mut disconnected).await, Message::Text(_)));
+        // Stop polling the socket to simulate a suspended iOS WebView after network loss.
+        sleep(Duration::from_millis(250)).await;
+
+        let mut reconnected = connect_controller(address).await;
+        let message = next_message(&mut reconnected).await;
+        assert!(matches!(message, Message::Text(_)), "stale connection blocked reconnect: {message:?}");
+        stop(handle).await;
+    }
+
+    #[tokio::test]
+    async fn a_controller_that_answers_pings_keeps_exclusive_room_ownership() {
+        let (handle, address) = start_test_relay().await;
+        let mut connected = connect_controller(address).await;
+        assert!(matches!(next_message(&mut connected).await, Message::Text(_)));
+        let reader = tokio::spawn(async move { while connected.next().await.is_some() {} });
+        sleep(Duration::from_millis(250)).await;
+
+        let mut duplicate = connect_controller(address).await;
+        assert!(matches!(next_message(&mut duplicate).await, Message::Close(_)));
+        reader.abort();
+        stop(handle).await;
+    }
+
+    #[tokio::test]
+    async fn application_heartbeat_is_acknowledged_with_its_source_id() {
+        let (handle, address) = start_test_relay().await;
+        let mut socket = connect_controller(address).await;
+        assert!(matches!(next_message(&mut socket).await, Message::Text(_)));
+        socket.send(Message::Text(json!({"type":"heartbeat","id":47}).to_string().into())).await.unwrap();
+        loop {
+            let Message::Text(text) = next_message(&mut socket).await else { continue };
+            let message: Value = serde_json::from_str(&text).unwrap();
+            if message["type"] == "heartbeat_ack" {
+                assert_eq!(message["sourceId"], 47);
+                assert!(message["id"].as_u64().is_some_and(|id| id > 0));
+                break;
+            }
+        }
+        stop(handle).await;
+    }
 }
