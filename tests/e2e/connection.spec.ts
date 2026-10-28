@@ -4,15 +4,26 @@ const host=process.env.E2E_SERVER_IP||'127.0.0.1';
 
 test('上一次 iOS 连接断网失去响应后，新连接等待母线清理并自动恢复',async({page})=>{
   test.setTimeout(60000);
-  const stale=new WebSocket(`ws://${host}:8787`,{autoPong:false});
-  stale.on('error',()=>{});
-  const snapshot=new Promise<void>((resolve,reject)=>{
-    stale.on('open',()=>stale.send(JSON.stringify({id:1,type:'hello',role:'controller',room:'exhibition-main-room'})));
-    stale.on('message',raw=>{if(JSON.parse(String(raw)).type==='snapshot')resolve();});
-    stale.once('error',reject);
-  });
+  const connectStale=async()=>{
+    let lastError:unknown;
+    const deadline=Date.now()+30000;
+    while(Date.now()<deadline){
+      const stale=new WebSocket(`ws://${host}:8787`,{autoPong:false});
+      stale.on('error',()=>{});
+      try{
+        await new Promise<void>((resolve,reject)=>{stale.once('open',()=>resolve());stale.once('error',reject);});
+        await new Promise<void>((resolve,reject)=>{
+          stale.on('message',raw=>{try{if(JSON.parse(String(raw)).type==='snapshot')resolve();}catch(error){reject(error);}});
+          stale.once('error',reject);
+          stale.send(JSON.stringify({id:1,type:'hello',role:'controller',room:'exhibition-main-room'}));
+        });
+        return stale;
+      }catch(error){lastError=error;stale.terminate();await new Promise(resolve=>setTimeout(resolve,250));}
+    }
+    throw lastError||new Error(`无法连接 Windows 同步端口：${host}:8787`);
+  };
+  const stale=await connectStale();
   try{
-    await snapshot;
     await page.goto('/?role=controller');
     await page.getByRole('button',{name:'连接 Windows 大屏'}).click();
     await page.getByRole('textbox',{name:'Windows 地址',exact:true}).fill(host);
