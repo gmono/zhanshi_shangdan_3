@@ -16,7 +16,7 @@ import 'ol/ol.css';
 interface Props { state: MapState; interactive: boolean; onChange: (patch: Partial<MapState>) => void; pageId?: string; active?: boolean; tileHost?: string; catalog?: ResourceCatalog }
 const quiet = () => undefined;
 export const MapStage = memo(function MapStage({ state, interactive, onChange, pageId = state.page, active = true, tileHost, catalog }: Props) {
-  const places = catalog?.locations || locations.map(p => ({ ...p, images: p.images.map(url => ({ url, width: mapConfig.width, height: mapConfig.height })) }));
+  const places = catalog?.locations || locations.map(p => ({ ...p, images: p.images.map((url): ImageResource => ({ url, width: mapConfig.width, height: mapConfig.height })) }));
   const pages = catalog?.maps || mapPages.map(p => ({ ...p, width: mapConfig.width, height: mapConfig.height }));
   const comparison = pageId === 'comparison';
   const outer = evenSplits(places.length);
@@ -30,7 +30,7 @@ export const MapStage = memo(function MapStage({ state, interactive, onChange, p
           const innerSplits = places.map((item, index) => index === placeIndex ? splits : state.innerSplits?.[index] || leftEdgeSplits(item.images.length));
           onChange({ innerSplits });
         }}>
-          {place.images.map((resource, index) => <MapSurface key={resource.url + index} resource={resource} tileHost={tileHost} interactive={false} active={active} showErrors={interactive} fit camera={initialState} onChange={quiet} />)}
+          {place.images.map((resource, index) => <MapSurface key={resource.url + (resource.version ?? '') + index} resource={resource} tileHost={tileHost} interactive={false} active={active} showErrors={interactive} fit camera={initialState} onChange={quiet} />)}
         </SplitContainer>;
       })}
     </SplitContainer> : <MapSurface resource={mapPage} tileHost={tileHost} interactive={interactive} publishing={state.page === pageId} active={active} showErrors={interactive} fit={false} camera={camera} onChange={next => onChange({ mapViews: { ...state.mapViews, [pageId]: next } })} />}
@@ -40,7 +40,7 @@ export const MapStage = memo(function MapStage({ state, interactive, onChange, p
 
 interface SurfaceProps { resource: ImageResource; tileHost?: string; interactive: boolean; publishing?: boolean; active: boolean; showErrors: boolean; fit: boolean; camera: MapViewState; onChange: (value: MapViewState) => void }
 function MapSurface({ resource, tileHost, interactive, publishing = false, active, showErrors, fit, camera, onChange }: SurfaceProps) {
-  const { url, width, height } = resource;
+  const { url, width, height, version } = resource;
   const root = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const view = useRef<View | null>(null);
@@ -55,7 +55,9 @@ function MapSurface({ resource, tileHost, interactive, publishing = false, activ
   const [tileError, setTileError] = useState(false);
   latest.current = camera; callback.current = onChange; mayPublish.current = publishing;
   useLayoutEffect(() => {
-    const tileUrl = tileHost && mapConfig.image ? `http://${tileHost}:1421${url}` : url;
+    const base = tileHost && mapConfig.image ? `http://${tileHost}:1421${url}` : url;
+    // Zoomify 会把 {TileGroup}/{z}-{x}-{y}.jpg 直接拼在 base 后面，版本参数必须放在模板末尾。
+    const tileUrl = mapConfig.image ? `${base}{TileGroup}/{z}-{x}-{y}.jpg${version ? `?v=${encodeURIComponent(version)}` : ''}` : base;
     const source = mapConfig.image ? new Zoomify({ url: tileUrl, size: [width, height], crossOrigin: 'anonymous' }) : new XYZ({ url: tileUrl, crossOrigin: 'anonymous', attributions: mapConfig.attribution, maxZoom: 19 });
     setTileError(false);
     const firstCamera = localCamera(latest.current, { width, height }, viewport.current);
@@ -90,7 +92,7 @@ function MapSurface({ resource, tileHost, interactive, publishing = false, activ
     active.on('change:center', schedule); active.on('change:resolution', schedule);
     map.on('moveend', publish);
     return () => { running.current = false; cancelAnimationFrame(frame.current); frame.current = 0; map.dispose(); mapRef.current = null; view.current = null; };
-  }, [url, width, height, tileHost, interactive, fit]);
+  }, [url, width, height, tileHost, interactive, fit, version]);
   useLayoutEffect(() => {
     const map = mapRef.current;
     const targetView = view.current;
@@ -124,7 +126,7 @@ function MapSurface({ resource, tileHost, interactive, publishing = false, activ
     applying.current = false;
     running.current = true;
     return () => { running.current = false; cancelAnimationFrame(frame.current); frame.current = 0; targetView.cancelAnimations(); observer.disconnect(); map.setTarget(undefined); };
-  }, [active, url, width, height, tileHost, interactive, fit]);
+  }, [active, url, width, height, tileHost, interactive, fit, version]);
   useLayoutEffect(() => {
     const targetView = view.current;
     if (!active || !targetView || fit) return;

@@ -14,6 +14,11 @@ fn source_stamp(source:&Path) -> Result<Value,String> {
     Ok(json!({"version":1,"file":source.file_name().unwrap_or_default().to_string_lossy(),"bytes":metadata.len(),"modifiedNs":modified.as_nanos().to_string()}))
 }
 
+fn stamp_version(stamp:&Value) -> String {
+    // 只用于让瓦片 URL 随原图变化；不使用内容哈希。
+    format!("{}-{}",stamp["bytes"],stamp["modifiedNs"].as_str().unwrap_or("0"))
+}
+
 fn cache_matches(destination:&Path, stamp:&Value) -> bool {
     if !destination.join("ImageProperties.xml").is_file() || !destination.join("TileGroup0/0-0-0.jpg").is_file() {return false;}
     fs::read(destination.join("source.json")).ok().and_then(|bytes|serde_json::from_slice::<Value>(&bytes).ok()).as_ref()==Some(stamp)
@@ -91,6 +96,15 @@ mod tests {
     }
 
     #[test]
+    fn version_changes_when_the_original_changes() {
+        let root=temp();let source=root.join("1.png");fs::write(&source,b"first").unwrap();
+        let before=stamp_version(&source_stamp(&source).unwrap());
+        fs::write(&source,b"second-version").unwrap();
+        assert_ne!(before,stamp_version(&source_stamp(&source).unwrap()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn reports_scan_before_missing_original_error() {
         let root=temp();let events=std::cell::RefCell::new(Vec::new());
         let result=prepare_with_progress(&root,&root.join(".cache"),Path::new("missing-vips"),&|value|events.borrow_mut().push(value));
@@ -115,9 +129,12 @@ mod tests {
             fs::write(destination.join("source.json"),serde_json::to_vec(&source_stamp(&source.path).unwrap()).unwrap()).unwrap();
         }
         let events=std::cell::RefCell::new(Vec::new());
-        prepare_with_progress(&root,&cache,Path::new("unused"),&|v|events.borrow_mut().push(v)).unwrap();
+        let catalog=prepare_with_progress(&root,&cache,Path::new("unused"),&|v|events.borrow_mut().push(v)).unwrap();
         let events=events.into_inner();assert_eq!(events.iter().filter(|v|v["phase"]=="cached").count(),16);
         assert_eq!(events.last().unwrap()["phase"],"ready");assert_eq!(events.last().unwrap()["completed"],16);
+        // 每条瓦片记录必须带版本，客户端才知道何时重建地图。
+        let versions:Vec<&str>=catalog["locations"].as_array().unwrap().iter().flat_map(|place|place["images"].as_array().unwrap()).chain(catalog["maps"].as_array().unwrap().iter()).map(|image|image["version"].as_str().unwrap_or("")).collect();
+        assert_eq!(versions.len(),16);assert!(versions.iter().all(|version|!version.is_empty()));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -169,7 +186,7 @@ pub fn prepare_with_progress(root:&Path,cache:&Path,vips:&Path,report:&dyn Fn(Va
         let stamp=source_stamp(&source.path)?;
         if cache_matches(&destination,&stamp) {
             let xml = fs::read_to_string(destination.join("ImageProperties.xml")).map_err(|e| e.to_string())?;
-            let value=json!({"url": format!("/zoomify/{folder}/"), "width": size(&xml, "WIDTH")?, "height": size(&xml, "HEIGHT")?});
+            let value=json!({"url": format!("/zoomify/{folder}/"), "width": size(&xml, "WIDTH")?, "height": size(&xml, "HEIGHT")?, "version": stamp_version(&stamp)});
             notify("cached","已验证并复用原图缓存");
             completed+=1;
             return Ok(value);
@@ -211,7 +228,7 @@ pub fn prepare_with_progress(root:&Path,cache:&Path,vips:&Path,report:&dyn Fn(Va
         if destination.exists() {fs::remove_dir_all(&destination).map_err(|e|e.to_string())?;}
         fs::rename(pending,&destination).map_err(|e|e.to_string())?;
         completed+=1;
-        Ok(json!({"url": format!("/zoomify/{folder}/"), "width": dimensions.0, "height": dimensions.1}))
+        Ok(json!({"url": format!("/zoomify/{folder}/"), "width": dimensions.0, "height": dimensions.1, "version": stamp_version(&stamp)}))
     };
     let mut locations = vec![];
     for (i, (label, images)) in sources.places.iter().enumerate() {
