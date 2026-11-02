@@ -15,6 +15,7 @@ import 'ol/ol.css';
 
 interface Props { state: MapState; interactive: boolean; onChange: (patch: Partial<MapState>) => void; pageId?: string; active?: boolean; tileHost?: string; catalog?: ResourceCatalog }
 const quiet = () => undefined;
+const sameFloat = (a: number, b: number) => Math.abs(a - b) <= Number.EPSILON * 4 * Math.max(1, Math.abs(a), Math.abs(b));
 export const MapStage = memo(function MapStage({ state, interactive, onChange, pageId = state.page, active = true, tileHost, catalog }: Props) {
   const places = catalog?.locations || locations.map(p => ({ ...p, images: p.images.map((url): ImageResource => ({ url, width: mapConfig.width, height: mapConfig.height })) }));
   const pages = catalog?.maps || mapPages.map(p => ({ ...p, width: mapConfig.width, height: mapConfig.height }));
@@ -132,7 +133,8 @@ function MapSurface({ resource, tileHost, interactive, publishing = false, activ
     if (!active || !targetView || fit) return;
     // 本机操作发出的状态只用于同步大屏，不反向写回并打断本机缩放动画。
     const echo = published.current;
-    if (interactive && echo && echo.zoom === camera.zoom && echo.center[0] === camera.center[0] && echo.center[1] === camera.center[1]) return;
+    // JSON 经母线往返后可能相差几个浮点末位，仍属于本机回声。
+    if (interactive && echo && sameFloat(echo.zoom, camera.zoom) && sameFloat(echo.center[0], camera.center[0]) && sameFloat(echo.center[1], camera.center[1])) return;
     const local = localCamera(camera, { width, height }, viewport.current);
     const center = targetView.getCenter();
     const centerChanged = !center || Math.abs(center[0] - local.center[0]) > 0.001 || Math.abs(center[1] - local.center[1]) > 0.001;

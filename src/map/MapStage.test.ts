@@ -119,6 +119,25 @@ it('本机已发出的中间视角不会反向覆盖继续进行的缩放', () =
   expect(cancel).not.toHaveBeenCalled();
 });
 
+it('母线回声的浮点末位变化不能中断正在进行的本机缩放', () => {
+  const onChange = vi.fn();
+  const props = { state, interactive: true, onChange, pageId: 'map-1' };
+  const screen = render(createElement(MapStage, props));
+  const map = maps[0];
+  act(() => { map.view.setZoom(4); map.events.moveend(); });
+  const patch = onChange.mock.calls.at(-1)![0];
+  const echoed = { ...patch.mapViews['map-1'], zoom: 4.000000000000001 };
+  act(() => map.view.setZoom(4.1));
+  const cancel = vi.spyOn(map.view, 'cancelAnimations');
+  screen.rerender(createElement(MapStage, { ...props, state: { ...state, mapViews: { 'map-1': echoed } } }));
+  expect(map.view.getZoom()).toBeCloseTo(4.1);
+  expect(cancel).not.toHaveBeenCalled();
+  // 其他控制端的实际视角变化仍应正常应用。
+  screen.rerender(createElement(MapStage, { ...props, state: { ...state, mapViews: { 'map-1': { ...echoed, zoom: 5 } } } }));
+  expect(map.view.getZoom()).toBe(5);
+  expect(cancel).toHaveBeenCalled();
+});
+
 it('相对视角在横竖屏切换时按各自画布尺寸重新适配，保持有效分辨率', () => {
   const observers: Array<() => void> = [];
   vi.stubGlobal('ResizeObserver', class { constructor(callback: () => void) { observers.push(callback); } observe() {} disconnect() {} });

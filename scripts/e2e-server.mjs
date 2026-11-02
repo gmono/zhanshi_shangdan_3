@@ -2,6 +2,7 @@
 import {spawn} from 'node:child_process';
 import {createServer,request} from 'node:http';
 import {connect} from 'node:net';
+import {WebSocket} from 'ws';
 import {appendFile,mkdir,writeFile} from 'node:fs/promises';
 import {resolve,dirname} from 'node:path';
 import {createOriginals} from './create-e2e-originals.mjs';
@@ -33,9 +34,31 @@ if(process.env.E2E_WINDOWS_APP){
     socket.on('close',()=>upstream.destroy());upstream.on('close',()=>socket.destroy());
   });proxy.listen(1421,host);
 }
-if(!process.env.E2E_NO_FRONTEND)launch(process.execPath,[resolve('node_modules/vite/bin/vite.js'),'preview','--host','127.0.0.1','--port',process.env.E2E_FRONTEND_PORT||'1430','--strictPort']);
-await writeFile(resolve(dir,'server.json'),JSON.stringify({host,frontendPort:Number(process.env.E2E_FRONTEND_PORT||1430),windowsApp:process.env.E2E_WINDOWS_APP||null}));
 let closing=false;
 function close(){if(closing)return;closing=true;proxy?.close();for(const child of children)child.kill();setTimeout(()=>process.exit(),1000).unref();}
 process.on('SIGTERM',close);process.on('SIGINT',close);
+
+// 安装后的 Windows 首次启动可能较慢；握手成功后才让 Playwright 开始用例。
+async function waitForSync(){
+  const deadline=Date.now()+120000;let lastError;
+  while(!closing&&Date.now()<deadline){
+    const socket=new WebSocket(`ws://${host}:8787`);
+    try{
+      await new Promise((resolve,reject)=>{
+        const timer=setTimeout(()=>reject(Error('同步握手未返回快照')),1000);
+        const finish=callback=>value=>{clearTimeout(timer);callback(value);};
+        socket.once('error',finish(reject));
+        socket.once('open',()=>socket.send(JSON.stringify({id:1,type:'hello',role:'display',room:'exhibition-e2e-readiness',pageId:'comparison'})));
+        socket.on('message',bytes=>{try{if(JSON.parse(String(bytes)).type==='snapshot')finish(resolve)();}catch(error){finish(reject)(error);}});
+      });
+      return;
+    }catch(error){lastError=error;}
+    finally{socket.terminate();}
+    await new Promise(resolve=>setTimeout(resolve,100));
+  }
+  throw Error(`测试前同步服务未就绪：${host}:8787；${lastError}`);
+}
+try{await waitForSync();}catch(error){close();throw error;}
+if(!process.env.E2E_NO_FRONTEND)launch(process.execPath,[resolve('node_modules/vite/bin/vite.js'),'preview','--host','127.0.0.1','--port',process.env.E2E_FRONTEND_PORT||'1430','--strictPort']);
+await writeFile(resolve(dir,'server.json'),JSON.stringify({host,frontendPort:Number(process.env.E2E_FRONTEND_PORT||1430),windowsApp:process.env.E2E_WINDOWS_APP||null}));
 setInterval(()=>{},1000);
