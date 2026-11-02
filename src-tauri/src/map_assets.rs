@@ -15,8 +15,8 @@ fn source_stamp(source:&Path) -> Result<Value,String> {
 }
 
 fn stamp_version(stamp:&Value) -> String {
-    // 只用于让瓦片 URL 随原图变化；不使用内容哈希。
-    format!("{}-{}",stamp["bytes"],stamp["modifiedNs"].as_str().unwrap_or("0"))
+    // 与缓存校验使用相同字段，改扩展名且保留大小、时间也会切换瓦片 URL。
+    format!("v{}-{}-{}-{}",stamp["version"],stamp["file"].as_str().unwrap_or(""),stamp["bytes"],stamp["modifiedNs"].as_str().unwrap_or("0"))
 }
 
 fn cache_matches(destination:&Path, stamp:&Value) -> bool {
@@ -101,6 +101,21 @@ mod tests {
         let before=stamp_version(&source_stamp(&source).unwrap());
         fs::write(&source,b"second-version").unwrap();
         assert_ne!(before,stamp_version(&source_stamp(&source).unwrap()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn changing_extension_changes_version_even_when_size_and_time_are_preserved() {
+        let root = temp();
+        let source = root.join("2.png");
+        fs::write(&source, b"same-sized-original").unwrap();
+        let before = source_stamp(&source).unwrap();
+        let renamed = root.join("2.jpg");
+        fs::rename(&source, &renamed).unwrap();
+        let after = source_stamp(&renamed).unwrap();
+        assert_eq!(before["bytes"], after["bytes"]);
+        assert_eq!(before["modifiedNs"], after["modifiedNs"]);
+        assert_ne!(stamp_version(&before), stamp_version(&after), "缓存重建时，客户端版本也必须变化");
         fs::remove_dir_all(root).unwrap();
     }
 

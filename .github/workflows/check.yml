@@ -58,6 +58,10 @@ jobs:
         shell: pwsh
         run: |
           pnpm exec playwright install chromium
+          $env:E2E_NATIVE_BINARY = "$PWD/tests/native/target/debug/exhibition-resource-test-server.exe"
+          $env:VIPS_BIN = "$PWD/src-tauri/tools/vips/bin/vips.exe"
+          node scripts/check-image-refresh.mjs chromium
+          if ($LASTEXITCODE -ne 0) { throw '同尺寸和跨扩展名替图回归失败' }
           $installer = (Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
           ./scripts/test-windows-native.ps1 -Installer $installer
       - name: 保存 Windows 原生端到端测试证据
@@ -65,7 +69,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-native-e2e
-          path: tmp/e2e/
+          path: |
+            tmp/e2e/
+            tmp/image-refresh-check/
       - uses: actions/upload-artifact@v4
         with:
           name: Windows安装包
@@ -103,6 +109,7 @@ jobs:
           pnpm build
           pnpm exec playwright install webkit
           export E2E_NATIVE_BINARY="$PWD/tmp/native-test-target/debug/exhibition-resource-test-server"
+          node scripts/check-image-refresh.mjs webkit
           pnpm exec playwright test --project=webkit-ipad
       - name: 编译真正的 iPad 应用
         run: |
@@ -118,6 +125,7 @@ jobs:
           path: |
             tmp/e2e/
             tmp/ios-connection/
+            tmp/image-refresh-check/
 
   # macOS runner 可在没有本地 Mac 的情况下编译 iOS 工程。
   # 这个 job 编译 Simulator 版本，不需要 Apple Developer 账号。
