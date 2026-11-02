@@ -72,6 +72,8 @@ jobs:
           path: |
             tmp/e2e/
             tmp/image-refresh-check/
+            tmp/native-original-contract/result.json
+            tmp/resource-progress-check/result.json
       - uses: actions/upload-artifact@v4
         with:
           name: Windows安装包
@@ -126,6 +128,8 @@ jobs:
             tmp/e2e/
             tmp/ios-connection/
             tmp/image-refresh-check/
+            tmp/native-original-contract/result.json
+            tmp/resource-progress-check/result.json
 
   # macOS runner 可在没有本地 Mac 的情况下编译 iOS 工程。
   # 这个 job 编译 Simulator 版本，不需要 Apple Developer 账号。
