@@ -26,7 +26,10 @@ async function poll(predicate,stage){
 const hash=async file=>createHash('sha256').update(await readFile(file)).digest('hex');
 try{
   start();await poll(r=>r.status===503,'空安装目录检查');report.checks.emptyInstallDirectory=true;
+  // 按正式部署流程放齐原图再重启，避免服务在测试图片生成到一半时完成扫描。
+  await stop();
   const originals=await createOriginals(root);
+  start();
   const first=await poll((r,b)=>r.ok&&b.maps?.length===10,'首次十张地图切片');
   assert.equal(first.locations[0].images[0].width,640);assert.equal(first.locations[0].images[1].width,800);report.checks.originalDimensions=true;
   for(const source of originals)assert.equal(await hash(source.file),source.sha256);report.checks.originalBytesUnchanged=true;
