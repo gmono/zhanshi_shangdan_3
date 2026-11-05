@@ -81,10 +81,15 @@ jobs:
 
   ios-connection:
     name: iPad 连接与真实瓦片加载
-    runs-on: macos-14
+    runs-on: macos-15-intel
     timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      IOS_TEST_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-18-5
     steps:
       - uses: actions/checkout@v4
+      - name: 校验固定 Xcode 版本
+        run: test "$(xcodebuild -version | head -n 1)" = 'Xcode 16.4'
       - uses: pnpm/action-setup@v4
         with:
           version: 10.12.1
@@ -135,9 +140,13 @@ jobs:
   # 这个 job 编译 Simulator 版本，不需要 Apple Developer 账号。
   ios-ipa:
     name: iOS IPA 构建（不签名）
-    runs-on: macos-14
+    runs-on: macos-15-intel
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+      - name: 校验固定 Xcode 版本
+        run: test "$(xcodebuild -version | head -n 1)" = 'Xcode 16.4'
       - uses: pnpm/action-setup@v4
         with:
           version: 10.12.1

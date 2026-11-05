@@ -31,7 +31,7 @@ socket.on('error', error => console.error(error.message));
 NODE
 observer_pid=$!
 xcrun simctl list devices available -j > "$report/devices.json"
-device=$(node --input-type=module -e 'import fs from "node:fs";const d=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));const list=Object.entries(d.devices).filter(([k])=>k.includes("iOS")).flatMap(([,v])=>v).filter(v=>v.isAvailable&&v.name.includes("iPad"));if(!list.length)throw Error("缺少 iPad 模拟器");console.log((list.find(v=>v.state==="Booted")||list[0]).udid)' "$report/devices.json")
+device=$(node --input-type=module -e 'import fs from "node:fs";const d=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));const runtime=process.env.IOS_TEST_RUNTIME;const list=Object.entries(d.devices).filter(([k])=>k.includes("iOS")&&(!runtime||k===runtime)).flatMap(([,v])=>v).filter(v=>v.isAvailable&&v.name.includes("iPad"));if(!list.length)throw Error("缺少指定运行时的 iPad 模拟器："+(runtime||"可用 iOS"));console.log((list.find(v=>v.state==="Booted")||list[0]).udid)' "$report/devices.json")
 xcrun simctl boot "$device" 2>/dev/null || true
 xcrun simctl bootstatus "$device" -b
 app="${IOS_LAUNCH_APP:-$(find "$root/src-tauri/gen/apple/build" -type d -name Exhibition.app -print -quit)}"
