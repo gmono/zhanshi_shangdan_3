@@ -309,6 +309,7 @@
 				ARCHS = (
 					arm64,
 				);
+				"ARCHS[sdk=iphonesimulator*]" = "$(ARCHS_STANDARD)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = tauronic_iOS/tauronic_iOS.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -343,6 +344,7 @@
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALID_ARCHS = arm64;
+				"VALID_ARCHS[sdk=iphonesimulator*]" = "arm64 x86_64";
 			};
 			name = release;
 		};
@@ -353,6 +355,7 @@
 				ARCHS = (
 					arm64,
 				);
+				"ARCHS[sdk=iphonesimulator*]" = "$(ARCHS_STANDARD)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = tauronic_iOS/tauronic_iOS.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -387,6 +390,7 @@
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALID_ARCHS = arm64;
+				"VALID_ARCHS[sdk=iphonesimulator*]" = "arm64 x86_64";
 			};
 			name = debug;
 		};
