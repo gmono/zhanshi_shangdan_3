@@ -1,6 +1,5 @@
-import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { test, expect, type Browser, type BrowserContext, type Page, type WebSocketRoute } from '@playwright/test';
 import { WebSocket } from 'ws';
-import { createConnection, createServer, type Server, type Socket } from 'node:net';
 import { mkdir, writeFile } from 'node:fs/promises';
 
 const host = process.env.E2E_SERVER_IP || '127.0.0.1';
@@ -13,27 +12,10 @@ test('Windows 与两个 iOS 双向触摸、换页、设置及断线重连保持�
   const diagnostics: { endpoint: string; message: string; expectedDisconnect: boolean }[] = [];
   const messages: { endpoint: string; message: any }[] = [];
   const snapshots: any[] = [];
-  const proxyIp = '127.0.0.2';
-  const proxyServers: Server[] = [];
-  const proxySockets = new Set<Socket>();
+  let secondServer: WebSocketRoute | undefined;
+  let secondClient: WebSocketRoute | undefined;
   let secondOffline = false;
   let secondRecovering = false;
-  // 原样转发真实服务的 TCP 字节；只切断第二个 iOS 的连接，不伪造协议响应。
-  const forward = async (port: number) => {
-    const server = createServer(client => {
-      if (secondOffline) { client.destroy(); return; }
-      const upstream = createConnection({ host, port });
-      for (const socket of [client, upstream]) {
-        proxySockets.add(socket);
-        socket.on('close', () => proxySockets.delete(socket));
-      }
-      client.on('error', () => upstream.destroy()); upstream.on('error', () => client.destroy());
-      client.on('close', () => upstream.destroy()); upstream.on('close', () => client.destroy());
-      client.pipe(upstream); upstream.pipe(client);
-    });
-    proxyServers.push(server);
-    await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(port, proxyIp, resolve); });
-  };
   const desktopBrowser = browserName === 'webkit'
     ? await playwright.chromium.launch({ executablePath: process.env.E2E_CHROMIUM_EXECUTABLE }) : browser;
   const observer = new WebSocket(`ws://${host}:8787`);
@@ -62,9 +44,19 @@ test('Windows 与两个 iOS 双向触摸、换页、设置及断线重连保持�
       if (message.type() === 'error') diagnostics.push({ endpoint: name, message: message.text(), expectedDisconnect: name === 'iOS-2' && secondRecovering });
     });
     page.on('requestfailed', request => diagnostics.push({ endpoint: name, message: `${request.url()}: ${request.failure()?.errorText}`, expectedDisconnect: name === 'iOS-2' && secondRecovering }));
-    page.on('websocket', socket => socket.on('framesent', frame => {
-      try { messages.push({ endpoint: name, message: JSON.parse(String(frame.payload)) }); } catch { /* 忽略非应用层帧。 */ }
-    }));
+    const record = (payload: string | Buffer) => {
+      try { messages.push({ endpoint: name, message: JSON.parse(String(payload)) }); } catch { /* 忽略非应用层帧。 */ }
+    };
+    if (name === 'iOS-2') {
+      // 连接真实 Rust 服务并原样转发，不占用第二个回环 IP 或正式服务端口。
+      await page.routeWebSocket(`ws://${host}:8787/**`, route => {
+        if (secondOffline) { void route.close({ code: 1001, reason: '测试连接中断' }); return; }
+        const server = route.connectToServer();
+        secondClient = route;
+        secondServer = server;
+        route.onMessage(payload => { record(payload); server.send(payload); });
+      });
+    } else page.on('websocket', socket => socket.on('framesent', frame => record(frame.payload)));
     return page;
   };
   const connectIos = async (page: Page, address = host) => {
@@ -106,6 +98,8 @@ test('Windows 与两个 iOS 双向触摸、换页、设置及断线重连保持�
     await settled(page);
     const panel = stage(page, 'comparison').locator('.split-inner').nth(index);
     const hit = panel.getByRole('slider');
+    const initialBounds = (await hit.boundingBox())!;
+    await hit.click({ trial: true, position: { x: initialBounds.width / 2, y: initialBounds.height * heightRatio } });
     const line = (await hit.boundingBox())!;
     const bounds = (await panel.boundingBox())!;
     await drag(page, { x: line.x + line.width / 2, y: bounds.y + bounds.height * heightRatio }, { x: bounds.x + bounds.width * ratio, y: bounds.y + bounds.height * heightRatio });
@@ -127,7 +121,6 @@ test('Windows 与两个 iOS 双向触摸、换页、设置及断线重连保持�
     return Array.from(context.getImageData(0, 0, 32, 24).data).join(',');
   });
   try {
-    await Promise.all([forward(8787), forward(1421)]);
     const windows = await makePage('Windows', 1920, 1080, false, desktopBrowser);
     const first = await makePage('iOS-1', 1194, 834, true);
     const second = await makePage('iOS-2', 1366, 1024, true);
@@ -145,7 +138,7 @@ test('Windows 与两个 iOS 双向触摸、换页、设置及断线重连保持�
       await allSplits([windows, first], [0.3, 0, 0]);
       await dragSplit(first, 1, 0.6);
       await allSplits([windows, first], [0.3, 0.6, 0]);
-      await connectIos(second, proxyIp);
+      await connectIos(second);
       await allSplits(pages, [0.3, 0.6, 0]);
       await dragSplit(second, 2, 0.75, 0.8);
       await allSplits(pages, [0.3, 0.6, 0.75]);
@@ -181,7 +174,7 @@ test('Windows 与两个 iOS 双向触摸、换页、设置及断线重连保持�
       const previous = [...state().mapViews['map-1'].center];
       await drag(windows, center, { x: center.x + 160, y: center.y + 70 });
       await expect.poll(() => Math.abs(state().mapViews['map-1'].center[0] - previous[0])).toBeGreaterThan(0.02);
-      for (const [index, page] of pages.entries()) await page.screenshot({ path: `tmp/peer-sync-validation-20261105/${info.project.name}-map-${index}.png` });
+      for (const [index, page] of pages.entries()) await page.screenshot({ path: info.outputPath(`map-${index}.png`) });
       await expect(windows.getByRole('button')).toHaveCount(0);
     });
 
@@ -201,7 +194,10 @@ test('Windows 与两个 iOS 双向触摸、换页、设置及断线重连保持�
       secondOffline = true;
       secondRecovering = true;
       await second.context().setOffline(true);
-      for (const socket of proxySockets) socket.destroy();
+      await Promise.all([
+        secondServer?.close({ code: 1001, reason: '测试连接中断' }),
+        secondClient?.close({ code: 1001, reason: '测试连接中断' }),
+      ]);
       await expect(second.getByRole('button', { name: '连接 Windows 大屏', exact: true })).toBeVisible({ timeout: 35000 });
       await dragSplit(windows, 0, 0.65);
       await dragSplit(first, 1, 0.35);
@@ -218,7 +214,7 @@ test('Windows 与两个 iOS 双向触摸、换页、设置及断线重连保持�
       await allSplits(pages, [0.65, 0.35, 0]);
       await dragSplit(second, 2, 0.8, 0.8);
       await allSplits(pages, [0.65, 0.35, 0.8]);
-      for (const [index, page] of pages.entries()) await page.screenshot({ path: `tmp/peer-sync-validation-20261105/${info.project.name}-comparison-${index}.png` });
+      for (const [index, page] of pages.entries()) await page.screenshot({ path: info.outputPath(`comparison-${index}.png`) });
       await first.context().close();
       await dragSplit(windows, 0, 0.5);
       await allSplits([windows, second], [0.5, 0.35, 0.8]);
@@ -235,8 +231,6 @@ test('Windows 与两个 iOS 双向触摸、换页、设置及断线重连保持�
     await info.attach('三端同步消息与异常', { path: evidencePath, contentType: 'application/json' });
     observer.terminate();
     await Promise.all(contexts.map(context => context.close()));
-    for (const socket of proxySockets) socket.destroy();
-    await Promise.all(proxyServers.map(server => new Promise<void>(resolve => server.close(() => resolve()))));
     if (desktopBrowser !== browser) await desktopBrowser.close();
   }
 });

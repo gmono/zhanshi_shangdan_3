@@ -32,6 +32,14 @@ final class ConnectionUITests: XCTestCase {
         XCTAssertTrue(status.waitForExistence(timeout: 30), "未连接真实 Rust 同步服务")
         app.buttons["返回"].firstMatch.tap()
         XCTAssertTrue(app.buttons["图1"].waitForExistence(timeout: 60), "连接后未加载 Windows 原图目录")
+        let firstMap = app.buttons["图1"]
+        let ready = expectation(for: NSPredicate { _, _ in firstMap.isEnabled && firstMap.isHittable }, evaluatedWith: firstMap, handler: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed, "Ionic 页面转场未完成")
+        let webView = app.webViews.firstMatch
+        XCTAssertTrue(webView.waitForExistence(timeout: 15), "未找到原生 WebView")
+        let splitStart = webView.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.2))
+        let splitEnd = webView.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.2))
+        splitStart.press(forDuration: 0.1, thenDragTo: splitEnd)
         capture(app, "已连接并加载三图")
         for number in 1...10 {
             app.buttons["图\(number)"].tap()
@@ -39,6 +47,13 @@ final class ConnectionUITests: XCTestCase {
             XCTAssertTrue(back.waitForExistence(timeout: 15))
             sleep(2)
             capture(app, "原图\(number)")
+            if number == 1 {
+                webView.pinch(withScale: 1.8, velocity: 1)
+                let panStart = webView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+                let panEnd = webView.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.5))
+                panStart.press(forDuration: 0.1, thenDragTo: panEnd)
+                capture(app, "原生双指缩放与平移")
+            }
             back.tap()
             XCTAssertTrue(app.buttons["图1"].waitForExistence(timeout: 15))
         }

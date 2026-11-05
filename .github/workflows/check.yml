@@ -109,7 +109,7 @@ jobs:
       - name: WebKit iPad 控制端端到端测试
         run: |
           pnpm build
-          pnpm exec playwright install webkit
+          pnpm exec playwright install webkit chromium
           export E2E_NATIVE_BINARY="$PWD/tmp/native-test-target/debug/exhibition-resource-test-server"
           node scripts/check-image-refresh.mjs webkit
           pnpm exec playwright test --project=webkit-ipad
