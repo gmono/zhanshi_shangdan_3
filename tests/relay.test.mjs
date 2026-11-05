@@ -27,7 +27,7 @@ function inbox(ws) {
   };
 }
 
-test('房间隔离、只读权限、三图状态同步和重连快照', async t => {
+test('房间隔离、大屏反向发布、三图状态同步和重连快照', async t => {
   const server = createRelay({ host: '127.0.0.1', port: 0 });
   await once(server, 'listening');
   const sockets = [];
@@ -51,8 +51,14 @@ test('房间隔离、只读权限、三图状态同步和重连快照', async t 
   assert.deepEqual((await late.next('snapshot')).state, state);
   const isolated = await connect('display', 'otherroom01');
   assert.equal((await isolated.next('snapshot')).state, null);
-  display.ws.send(JSON.stringify({ type: 'state', state: { ...state, zoom: 18 } }));
-  assert.equal((await display.next('error')).message, '展示端只读');
+  // 先消费控制端先前写入的确认。
+  await controller.next('state_ack');
+  const fromDisplay = { ...state, zoom: 18 };
+  display.ws.send(JSON.stringify({ type: 'state', id: 2, state: fromDisplay }));
+  assert.deepEqual((await controller.next('snapshot')).state, fromDisplay);
+  const displayAck = await display.next('state_ack');
+  assert.equal(displayAck.sourceId, 2);
+  assert.deepEqual(displayAck.state, fromDisplay);
   controller.ws.send(JSON.stringify({ type: 'state', state: { ...state, splits: [0.8, 0.2] } }));
   assert.equal((await controller.next('error')).message, '无效地图状态');
   const changed = { ...state, comparison: false, splits: [0.25, 0.75], zoom: 14 };
@@ -77,6 +83,49 @@ test('失联且不再回应 WebSocket Ping 的控制端释放房间并允许 iOS
   await new Promise(resolve=>setTimeout(resolve,50));
   const recovered=await connect(true);
   assert.equal((await recovered.next('snapshot')).state,null);
+});
+
+test('Windows 与两个 iOS 平等写入，其他端接收同一 revision 的状态', async t => {
+  const server = createRelay({ host: '127.0.0.1', port: 0 });
+  await once(server, 'listening');
+  const sockets = [];
+  t.after(async () => { sockets.forEach(ws => ws.terminate()); await new Promise(resolve => server.close(resolve)); });
+  const connect = async role => {
+    const ws = new WebSocket(`ws://127.0.0.1:${server.address().port}/?role=${role}&room=peersync01`);
+    sockets.push(ws);
+    const next = inbox(ws);
+    await once(ws, 'open');
+    assert.equal((await next('snapshot')).state, null);
+    return { ws, next };
+  };
+  const windows = await connect('display');
+  const firstIos = await connect('controller');
+  const secondIos = await connect('controller');
+  const peers = [windows, firstIos, secondIos];
+  let revision = 0;
+  const publish = async (sender, message) => {
+    sender.ws.send(JSON.stringify(message));
+    const ack = await sender.next('state_ack');
+    assert.equal(ack.sourceId, message.id);
+    assert.equal(ack.revision, ++revision);
+    for (const peer of peers) if (peer !== sender) {
+      const snapshot = await peer.next('snapshot');
+      assert.equal(snapshot.revision, revision);
+      assert.deepEqual(snapshot.state, ack.state);
+    }
+    return ack.state;
+  };
+  const seed = { ...state, page: 'comparison', outerSplits: [1 / 3, 2 / 3], innerSplits: [[0], [0], [0]], mapViews: {} };
+  await publish(windows, { type: 'state', id: 1, pageId: 'comparison', replace: true, patch: seed });
+  await publish(firstIos, { type: 'state', id: 1, pageId: 'comparison', patch: { innerSplits: { 0: [0.4] } } });
+  const fromSecond = await publish(secondIos, { type: 'state', id: 1, pageId: 'comparison', patch: { innerSplits: { 1: [0.7] } } });
+  assert.deepEqual(fromSecond.innerSplits, [[0.4], [0.7], [0]]);
+  const camera = { center: [0.3, 0.6], zoom: 2, space: 'image-relative' };
+  await publish(firstIos, { type: 'state', id: 2, pageId: 'map-1', patch: { page: 'map-1', comparison: false, mapViews: { 'map-1': camera } } });
+  const fromWindows = await publish(windows, { type: 'state', id: 2, pageId: 'map-1', patch: { mapViews: { 'map-1': { ...camera, zoom: 4 } } } });
+  assert.equal(fromWindows.page, 'map-1');
+  assert.equal(fromWindows.mapViews['map-1'].zoom, 4);
+  assert.deepEqual(fromWindows.innerSplits, [[0.4], [0.7], [0]]);
 });
 
 test('同一房间允许多个控制端，页面局部补丁按到达顺序合并', async t => {

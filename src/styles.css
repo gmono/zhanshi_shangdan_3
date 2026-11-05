@@ -80,7 +80,7 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 
 .display-page, .display-content { --background: #000; background: #000; }
 .display-content::part(scroll) { position: relative; overflow: hidden; }
-.display-content .map-stage.display-map { position: fixed; inset: 0; width: 100vw; height: 100dvh; background: #000; }
+.display-content .map-stage { position: fixed; inset: 0; width: 100vw; height: 100dvh; background: #000; }
 .display-map .ol-control, .display-map .ol-attribution, .display-map .map-label, .display-map .divider-number, .display-map .tile-error, .display-map .map-attribution { display: none !important; }
 .display-map .divider { width: 1px; background: #ffffffc9; box-shadow: 0 0 3px #000; }
 

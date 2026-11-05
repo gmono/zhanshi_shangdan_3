@@ -13,10 +13,10 @@ import Projection from 'ol/proj/Projection';
 import { fitZoom, initialCamera, localCamera, relativeCamera } from './initialCamera';
 import 'ol/ol.css';
 
-interface Props { state: MapState; interactive: boolean; onChange: (patch: Partial<MapState>) => void; pageId?: string; active?: boolean; tileHost?: string; catalog?: ResourceCatalog }
+interface Props { state: MapState; interactive: boolean; showErrors?: boolean; onChange: (patch: Partial<MapState>) => void; pageId?: string; active?: boolean; tileHost?: string; catalog?: ResourceCatalog }
 const quiet = () => undefined;
 const sameFloat = (a: number, b: number) => Math.abs(a - b) <= Number.EPSILON * 4 * Math.max(1, Math.abs(a), Math.abs(b));
-export const MapStage = memo(function MapStage({ state, interactive, onChange, pageId = state.page, active = true, tileHost, catalog }: Props) {
+export const MapStage = memo(function MapStage({ state, interactive, showErrors = interactive, onChange, pageId = state.page, active = true, tileHost, catalog }: Props) {
   const places = catalog?.locations || locations.map(p => ({ ...p, images: p.images.map((url): ImageResource => ({ url, width: mapConfig.width, height: mapConfig.height })) }));
   const pages = catalog?.maps || mapPages.map(p => ({ ...p, width: mapConfig.width, height: mapConfig.height }));
   const comparison = pageId === 'comparison';
@@ -31,12 +31,12 @@ export const MapStage = memo(function MapStage({ state, interactive, onChange, p
           const innerSplits = places.map((item, index) => index === placeIndex ? splits : state.innerSplits?.[index] || leftEdgeSplits(item.images.length));
           onChange({ innerSplits });
         }}>
-          {place.images.map((resource, index) => <MapSurface key={resource.url + (resource.version ?? '') + index} resource={resource} tileHost={tileHost} interactive={false} active={active} showErrors={interactive} fit camera={initialState} onChange={quiet} />)}
+          {place.images.map((resource, index) => <MapSurface key={resource.url + (resource.version ?? '') + index} resource={resource} tileHost={tileHost} interactive={false} active={active} showErrors={showErrors} fit camera={initialState} onChange={quiet} />)}
         </SplitContainer>;
       })}
-    </SplitContainer> : <MapSurface resource={mapPage} tileHost={tileHost} interactive={interactive} publishing={state.page === pageId} active={active} showErrors={interactive} fit={false} camera={camera} onChange={next => onChange({ mapViews: { ...state.mapViews, [pageId]: next } })} />}
+    </SplitContainer> : <MapSurface resource={mapPage} tileHost={tileHost} interactive={interactive} publishing={state.page === pageId} active={active} showErrors={showErrors} fit={false} camera={camera} onChange={next => onChange({ mapViews: { ...state.mapViews, [pageId]: next } })} />}
   </div>;
-}, (previous, next) => previous.pageId === next.pageId && previous.interactive === next.interactive && previous.active === next.active && previous.catalog === next.catalog && previous.tileHost === next.tileHost && previous.onChange === next.onChange
+}, (previous, next) => previous.pageId === next.pageId && previous.interactive === next.interactive && previous.showErrors === next.showErrors && previous.active === next.active && previous.catalog === next.catalog && previous.tileHost === next.tileHost && previous.onChange === next.onChange
   && (previous.state === next.state || (previous.active === false && next.active === false)));
 
 interface SurfaceProps { resource: ImageResource; tileHost?: string; interactive: boolean; publishing?: boolean; active: boolean; showErrors: boolean; fit: boolean; camera: MapViewState; onChange: (value: MapViewState) => void }
@@ -131,7 +131,7 @@ function MapSurface({ resource, tileHost, interactive, publishing = false, activ
   useLayoutEffect(() => {
     const targetView = view.current;
     if (!active || !targetView || fit) return;
-    // 本机操作发出的状态只用于同步大屏，不反向写回并打断本机缩放动画。
+    // 本机操作发出的状态用于同步其他端，不反向写回并打断本机缩放动画。
     const echo = published.current;
     // JSON 经母线往返后可能相差几个浮点末位，仍属于本机回声。
     if (interactive && echo && sameFloat(echo.zoom, camera.zoom) && sameFloat(echo.center[0], camera.center[0]) && sameFloat(echo.center[1], camera.center[1])) return;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mergeStatePatch, parseState, canPublish } from './protocol.mjs';
 
-describe('双端同步协议', () => {
+describe('多端同步协议', () => {
   it('接受合法相机和图层状态', () => {
     expect(parseState({ center: [120.16, 30.25], zoom: 12, showPoints: true, comparison: true, splits: [0.33, 0.67] })).toEqual({ center: [120.16, 30.25], zoom: 12, showPoints: true, comparison: true, splits: [0.33, 0.67] });
   });
@@ -18,9 +18,9 @@ describe('双端同步协议', () => {
       expect(parseState({ center: [0, 0], zoom: 4, showPoints: true, comparison: true, splits })).toBeNull();
     }
   });
-  it('大屏只读，未知角色也不可写', () => {
+  it('大屏与 iOS 平等可写，未知角色不可写', () => {
     expect(canPublish('controller')).toBe(true);
-    expect(canPublish('display')).toBe(false);
+    expect(canPublish('display')).toBe(true);
     expect(canPublish('unknown')).toBe(false);
   });
   it('接受带页面和嵌套分割线的同步状态', () => {

@@ -23,7 +23,7 @@ export function parseState(value) {
   }
   return { center: [...center], zoom, showPoints, comparison: page === 'comparison', page, outerSplits: [...outerSplits], innerSplits: innerSplits.map(list => [...list]), splits: [...splits], ...(mapViews !== undefined ? { mapViews: cameras } : {}) };
 }
-export function canPublish(role) { return role === 'controller'; }
+export function canPublish(role) { return role === 'controller' || role === 'display'; }
 
 export function mergeStatePatch(base, pageId, patch, replace = false) {
   if (!pageValid(pageId) || !patch || typeof patch !== 'object' || Array.isArray(patch)) return null;

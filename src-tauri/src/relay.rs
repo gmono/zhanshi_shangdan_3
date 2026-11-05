@@ -252,10 +252,6 @@ async fn handle_client(stream: TcpStream, relay: Arc<Mutex<Relay>>) -> Result<()
             continue;
         }
         let mut all = relay.lock().await;
-        if role != "controller" {
-            let page_id = value.get("pageId").and_then(Value::as_str).filter(|page| valid_page(page)).unwrap_or("comparison");
-            let _ = tx.send(sync_message(json!({"type":"error","pageId":page_id,"message":"展示端只读"}))); continue;
-        }
         if value.get("type").and_then(Value::as_str) != Some("state") { continue; }
         if let Some(room) = all.rooms.get_mut(&room_id) {
             let is_replace = value.get("replace").and_then(Value::as_bool) == Some(true) || value.get("state").is_some();

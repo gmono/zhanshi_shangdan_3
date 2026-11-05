@@ -26,15 +26,15 @@ async function connect(role: 'controller' | 'display') {
   await waitFor(() => expect(FakeSocket.instances.length).toBe(1));
   return { ...hook, ws: FakeSocket.instances[0] };
 }
-it('连接已有房间时采用母线状态，不发布本地旧整份状态', async () => {
-  const { result, ws } = await connect('controller');
+it.each(['controller', 'display'] as const)('%s 连接已有房间时采用母线状态，不发布本地旧整份状态', async role => {
+  const { result, ws } = await connect(role);
   const shared = { ...initialState, page: 'map-3', comparison: false, mapViews: { 'map-3': { center: [0.2, 0.4] as [number, number], zoom: 3 } } };
   act(() => { ws.onopen?.(); ws.snapshot(shared, 7); });
   expect(result.current.state).toEqual(shared);
   expect(ws.sent.map(raw => JSON.parse(raw).type)).toEqual(['hello']);
 });
-it('空房间通过带页面编号的完整种子建立共享状态', async () => {
-  const { result, ws } = await connect('controller');
+it.each(['controller', 'display'] as const)('%s 在空房间通过带页面编号的完整种子建立共享状态', async role => {
+  const { result, ws } = await connect(role);
   act(() => { ws.onopen?.(); ws.snapshot(null); });
   const message = JSON.parse(ws.sent.at(-1)!);
   expect(message).toMatchObject({ type: 'state', pageId: 'comparison', replace: true, patch: { page: 'comparison' } });
@@ -93,6 +93,37 @@ it('展示端接收嵌套状态并在断开时保留最后画面', async () => {
   expect(result.current.state.page).toBe('map-3');
   act(() => ws.onclose?.({ code: 1000 }));
   expect(result.current.state).toEqual(state);
+});
+it('Windows 触摸操作发布补丁，接收其他端状态及确认时不再次发送', async () => {
+  const { result, ws } = await connect('display');
+  act(() => { ws.onopen?.(); ws.snapshot(initialState, 1); });
+  ws.sent = [];
+  vi.useFakeTimers();
+  const innerSplits = initialState.innerSplits.map((values, index) => index === 0 ? [0.4] : values);
+  act(() => { result.current.update({ innerSplits }, 'comparison'); vi.advanceTimersByTime(16); });
+  expect(ws.sent).toHaveLength(1);
+  const write = JSON.parse(ws.sent[0]);
+  expect(write).toMatchObject({ type: 'state', pageId: 'comparison', patch: { innerSplits: { 0: [0.4] } } });
+  const fromIos = { ...initialState, innerSplits: initialState.innerSplits.map((values, index) => index === 1 ? [0.7] : values) };
+  act(() => ws.snapshot(fromIos, 2));
+  expect(result.current.state.innerSplits.slice(0, 2)).toEqual([[0.4], [0.7]]);
+  const merged = { ...fromIos, innerSplits: fromIos.innerSplits.map((values, index) => index === 0 ? [0.4] : values) };
+  act(() => { ws.stateAck(write.id, merged, 3); vi.advanceTimersByTime(100); });
+  expect(result.current.state).toEqual(merged);
+  expect(ws.sent).toHaveLength(1);
+});
+it.each(['controller', 'display'] as const)('%s 重连采纳共享状态，不重放断线期间的待发补丁', async role => {
+  const { result, ws } = await connect(role);
+  act(() => { ws.onopen?.(); ws.snapshot(initialState, 1); });
+  vi.useFakeTimers();
+  act(() => ws.onclose?.({ code: 1006, reason: 'network loss' }));
+  act(() => result.current.update({ page: 'map-7', comparison: false }, 'map-7'));
+  act(() => vi.advanceTimersByTime(2000));
+  const replacement = FakeSocket.instances[1];
+  const shared = { ...initialState, page: 'map-3', comparison: false };
+  act(() => { replacement.onopen?.(); replacement.snapshot(shared, 5); });
+  expect(result.current.state).toEqual(shared);
+  expect(replacement.sent.map(raw => JSON.parse(raw).type)).toEqual(['hello']);
 });
 it('严格在16ms窗口合并连续更新，只发送该窗口的最新局部补丁', async () => {
   const { result, ws } = await connect('controller');

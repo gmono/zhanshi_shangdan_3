@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { IonApp, IonButton, IonContent, IonIcon, IonPage, IonRouterOutlet, setupIonicReact, useIonRouter, useIonViewWillEnter, useIonViewWillLeave } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
 import { arrowBackOutline, mapOutline, settingsOutline } from 'ionicons/icons';
@@ -23,15 +23,15 @@ import './styles.css';
 
 setupIonicReact({ mode: 'ios', swipeBackEnabled: true });
 const role = getRole();
-const interactive = role === 'controller';
+const controller = role === 'controller';
 type Sync = ReturnType<typeof useSync>;
 export default function App() {
   const sync = useSync(role);
   useEffect(() => {
-    if (!interactive && isTauri()) void invoke('start_sync_relay', { port: 8787 }).catch(() => undefined);
+    if (!controller && isTauri()) void invoke('start_sync_relay', { port: 8787 }).catch(() => undefined);
   }, []);
   return <IonApp className="ion-palette-dark">
-    {interactive ? <IonReactRouter><ControllerRoutes sync={sync} /></IonReactRouter> : <DisplayApp sync={sync} />}
+    {controller ? <IonReactRouter><ControllerRoutes sync={sync} /></IonReactRouter> : <DisplayApp sync={sync} />}
   </IonApp>;
 }
 
@@ -42,20 +42,37 @@ function DisplayApp({ sync }: { sync: Sync }) {
     if (isTauri()) void invoke('set_display_fullscreen', { enabled: true }).catch(() => undefined);
   }, []);
   return <IonPage className="display-page"><IonContent className="display-content" scrollY={false} scrollX={false}>
-    {catalog && <MapStage state={sync.state} interactive={false} onChange={sync.update} catalog={catalog} tileHost="127.0.0.1" />}
+    {catalog && <MapStage state={sync.state} interactive showErrors={false} onChange={sync.update} catalog={catalog} tileHost="127.0.0.1" />}
     {(!catalog || resources.progress?.phase === 'error') && <ResourceStatus message={resources.message} progress={resources.progress} />}
   </IonContent></IonPage>;
 }
 
 function ControllerRoutes({ sync }: { sync: Sync }) {
   const route = useLocation();
+  const router = useIonRouter();
+  const outlet = useRef<HTMLIonRouterOutletElement>(null);
+  const [navigating, setNavigating] = useState(false);
   const { update } = sync;
   const latestState = useRef(sync.state);
   const preparedPage = useRef<string | null>(null);
+  const followedPage = useRef<string | null>(null);
+  const previousPath = useRef(route.pathname);
   latestState.current = sync.state;
   const connected = sync.status === '已连接';
   const resources = useResourceCatalog(sync.connection.ip, connected, false);
   const catalog = resources.catalog;
+  useLayoutEffect(() => {
+    const element = outlet.current;
+    if (!element) return;
+    const willChange = () => setNavigating(true);
+    const didChange = () => setNavigating(false);
+    element.addEventListener('ionNavWillChange', willChange);
+    element.addEventListener('ionNavDidChange', didChange);
+    return () => {
+      element.removeEventListener('ionNavWillChange', willChange);
+      element.removeEventListener('ionNavDidChange', didChange);
+    };
+  }, []);
   const preparePage = useCallback((targetPage: string) => {
     if (targetPage === 'comparison') {
       update({ ...initialState, outerSplits: evenSplits(catalog?.locations.length || 3), innerSplits: catalog ? catalog.locations.map(place => leftEdgeSplits(place.images.length)) : initialState.innerSplits }, targetPage, { replace: true });
@@ -69,20 +86,45 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
     } : {}) }, targetPage);
     preparedPage.current = targetPage;
   }, [catalog, update]);
-  useEffect(() => { if (catalog) update({ outerSplits: evenSplits(catalog.locations.length), innerSplits: catalog.locations.map(p => leftEdgeSplits(p.images.length)) }, 'comparison', { activate: false }); }, [catalog, update]);
   const pageId = route.pathname === '/' ? 'comparison' : catalog?.maps.find(page => route.pathname === `/map/${page.id}`)?.id;
-  // 只由当前路由发布页面状态；缓存中的旧页面不会回写自己的页面 ID。
   useLayoutEffect(() => {
-    if (!pageId) { preparedPage.current = null; return; }
-    // 按钮已在导航前准备状态；这里仅处理直接打开地址与浏览器返回。
-    if (preparedPage.current !== pageId) preparePage(pageId);
+    // 转场完成后再跟随最新共享页，避免进出生命周期交错隐藏当前页面。
+    if (navigating) return;
+    const oldPath = previousPath.current;
+    const pathChanged = oldPath !== route.pathname;
+    previousPath.current = route.pathname;
+    if (!connected || !catalog || route.pathname === '/settings') {
+      preparedPage.current = null;
+      followedPage.current = null;
+      return;
+    }
+    // 本机按钮已准备状态时，由该次导航完成路由，不再重复发起远端跟随。
+    if (preparedPage.current && pageId !== preparedPage.current) return;
+    if (followedPage.current) {
+      // 远端换页只移动路由，不复位视角或向母线再次发布。
+      if (pageId !== followedPage.current) return;
+      followedPage.current = null;
+    } else if (pageId && pathChanged && oldPath !== '/settings') {
+      // 按钮已在导航前发布；Ionic 返回手势及浏览器返回在这里发布。
+      if (preparedPage.current !== pageId) {
+        preparePage(pageId);
+        preparedPage.current = null;
+        return;
+      }
+    }
     preparedPage.current = null;
-  }, [pageId, preparePage]);
-  return <div className="controller-shell"><IonRouterOutlet>
+    const targetPage = latestState.current.page;
+    if (pageId === targetPage || (targetPage !== 'comparison' && !catalog.maps.some(page => page.id === targetPage))) return;
+    followedPage.current = targetPage;
+    const home = targetPage === 'comparison';
+    const path = home ? '/' : `/map/${targetPage}`;
+    router.push(`${path}${route.search}`, home ? 'back' : 'forward', home ? 'pop' : pageId === 'comparison' ? 'push' : 'replace');
+  }, [pageId, preparePage, connected, catalog, sync.state.page, route.pathname, route.search, router, navigating]);
+  return <div className="controller-shell"><IonRouterOutlet ref={outlet}>
     <Route exact path="/" render={() => <MapPage pageId="comparison" state={sync.state} update={sync.update} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} progress={resources.progress} />} />
     <Route exact path="/map/:pageId" render={({ match }) => <MapPage key={match.params.pageId} pageId={match.params.pageId} state={sync.state} update={sync.update} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} progress={resources.progress} />} />
     <Route exact path="/settings" render={() => <ConnectionPanel value={sync.connection} onSave={sync.configure} status={sync.status} displays={sync.peers.displays} error={sync.error} homePath={`/${route.search}`} />} />
-  </IonRouterOutlet><FloatingControls pathname={route.pathname} search={route.search} catalog={catalog} preparePage={preparePage} /></div>;
+  </IonRouterOutlet><FloatingControls pathname={route.pathname} search={route.search} catalog={catalog} preparePage={preparePage} navigating={navigating} /></div>;
 }
 
 function MapPage({ state, update, pageId, connected, tileHost, catalog, resourceMessage, progress }: { state: Sync['state']; update: Sync['update']; pageId: string; connected: boolean; tileHost: string; catalog: ResourceCatalog | null; resourceMessage: string; progress?: ResourceProgress | null }) {
@@ -99,21 +141,21 @@ function MapPage({ state, update, pageId, connected, tileHost, catalog, resource
   </IonPage>;
 }
 
-function FloatingControls({ pathname, search, catalog, preparePage }: { pathname: string; search: string; catalog: ResourceCatalog | null; preparePage: (pageId: string) => void }) {
+function FloatingControls({ pathname, search, catalog, preparePage, navigating }: { pathname: string; search: string; catalog: ResourceCatalog | null; preparePage: (pageId: string) => void; navigating: boolean }) {
   const router = useIonRouter();
   const comparison = pathname === '/';
   const pageId = pathname.split('/')[2];
   const mapPages = catalog?.maps || [];
   return <div className="floating-controls" hidden={pathname === '/settings'} role="region" aria-label="地图操作面板">
     {comparison ? <nav className="map-page-buttons" aria-label="地图页面">
-      {mapPages.map(page => <IonButton key={page.id} fill="clear" onClick={() => {
+      {mapPages.map(page => <IonButton key={page.id} fill="clear" disabled={navigating} onClick={() => {
         preparePage(page.id);
         router.push(`/map/${page.id}${search}`, 'forward', 'push');
       }}><IonIcon slot="start" icon={mapOutline} />{page.label}</IonButton>)}
     </nav> : <>
-      <IonButton fill="clear" onClick={() => { preparePage('comparison'); router.push(`/${search}`, 'back', 'pop'); }}><IonIcon slot="start" icon={arrowBackOutline} />返回</IonButton>
+      <IonButton fill="clear" disabled={navigating} onClick={() => { preparePage('comparison'); router.push(`/${search}`, 'back', 'pop'); }}><IonIcon slot="start" icon={arrowBackOutline} />返回</IonButton>
       <span className="floating-page-title">{mapPages.find(page => page.id === pageId)?.label}</span>
     </>}
-    <IonButton className="floating-settings" fill="clear" aria-label="打开设置" onClick={() => router.push(`/settings${search}`, 'forward', 'push')}><IonIcon slot="icon-only" icon={settingsOutline} /></IonButton>
+    <IonButton className="floating-settings" fill="clear" disabled={navigating} aria-label="打开设置" onClick={() => router.push(`/settings${search}`, 'forward', 'push')}><IonIcon slot="icon-only" icon={settingsOutline} /></IonButton>
   </div>;
 }

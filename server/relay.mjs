@@ -48,7 +48,7 @@ export function createRelay({ port = 8787, host = '0.0.0.0', heartbeatIntervalMs
         if (Number.isSafeInteger(message.id) && message.id > 0) send(client, { type: 'heartbeat_ack', pageId: room.state?.page || message.pageId || 'comparison', sourceId: message.id });
         return;
       }
-      if (!canPublish(role)) { send(client, { type: 'error', pageId: message.pageId || room.state?.page || 'comparison', message: '展示端只读' }); return; }
+      if (!canPublish(role)) return;
       if (message.type !== 'state') return;
       const pageId = message.pageId || message.state?.page || 'comparison';
       const patch = message.patch ?? message.state;

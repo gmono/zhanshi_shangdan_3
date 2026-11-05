@@ -126,11 +126,12 @@ export function useSync(role: Role) {
           const canonical = normalizeState(message.state);
           if (!canonical) return;
           const incomingRevision = Number(message.revision);
-          if (Number.isSafeInteger(incomingRevision) && incomingRevision >= revision.current) revision.current = incomingRevision;
           const acknowledgement = inFlight.current.findIndex(item => item.id === message.sourceId);
           if (acknowledgement >= 0) inFlight.current = inFlight.current.slice(acknowledgement + 1);
+          if (Number.isSafeInteger(incomingRevision) && incomingRevision < revision.current) return;
+          if (Number.isSafeInteger(incomingRevision)) revision.current = incomingRevision;
           const queued = [...inFlight.current, ...(pending.current ? [pending.current] : [])];
-          const next = role === 'controller' ? replayUpdates(canonical, queued) : canonical;
+          const next = replayUpdates(canonical, queued);
           latest.current = next; setState(next);
           return;
         }
@@ -143,18 +144,19 @@ export function useSync(role: Role) {
           const parsed = parseState(message.state);
           const received = normalizeState(message.state);
           if (received) {
-            let next = received;
+            // 首次连接或重连先采纳服务器状态，不能重放断线期间的旧操作。
+            if (!wasReady) { pending.current = null; inFlight.current = []; }
             const queued = pending.current;
-            if (role === 'controller') next = replayUpdates(received, [...inFlight.current, ...(queued ? [queued] : [])]);
+            const next = replayUpdates(received, [...inFlight.current, ...(queued ? [queued] : [])]);
             latest.current = next; setState(next);
-            if (!wasReady && role === 'controller' && parsed && !Object.prototype.hasOwnProperty.call(parsed, 'page')) {
+            if (!wasReady && parsed && !Object.prototype.hasOwnProperty.call(parsed, 'page')) {
               pending.current = { pageId: initialState.page, patch: initialState as unknown as Record<string, unknown>, replace: true };
             }
-          } else if (!wasReady && role === 'controller') {
+          } else if (!wasReady) {
             pending.current = { pageId: latest.current.page, patch: latest.current as unknown as Record<string, unknown>, replace: true };
           }
           ready.current = true;
-          if (role === 'controller') flushPending();
+          flushPending();
         }
         if (message.type === 'presence') setPeers({ controller: !!message.controller, controllers: Number(message.controllers) || Number(!!message.controller), displays: Number(message.displays) || 0 });
         if (message.type === 'error') setError(message.message);
@@ -164,7 +166,8 @@ export function useSync(role: Role) {
         if (stopped) return;
         clearInterval(heartbeat); heartbeat = undefined;
         clearTimeout(heartbeatTimeout); heartbeatTimeout = undefined; awaitingHeartbeat = undefined;
-        inFlight.current = []; revision.current = 0;
+        clearTimeout(timer.current); timer.current = undefined;
+        pending.current = null; inFlight.current = []; revision.current = 0;
         ready.current = false; setPeers({ controller: false, controllers: 0, displays: 0 });
         if (event.code === 1008 && event.reason.includes('房间已有控制端')) {
           setStatus('等待 Windows 释放旧控制连接');
@@ -177,11 +180,10 @@ export function useSync(role: Role) {
       };
     };
     const start = setTimeout(connect, 0);
-    return () => { clearTimeout(start); stopped = true; ready.current = false; clearTimeout(retry); clearInterval(heartbeat); clearTimeout(heartbeatTimeout); clearTimeout(timer.current); timer.current = undefined; socket.current?.close(); };
+    return () => { clearTimeout(start); stopped = true; ready.current = false; clearTimeout(retry); clearInterval(heartbeat); clearTimeout(heartbeatTimeout); clearTimeout(timer.current); timer.current = undefined; pending.current = null; inFlight.current = []; socket.current?.close(); };
   }, [connection, role, send, flushPending]);
 
   const update = useCallback((patch: StatePatch, pageId?: string, options: UpdateOptions = {}) => {
-    if (role !== 'controller') return;
     const base = latest.current;
     const replace = options.replace === true;
     const activate = options.activate !== false;
@@ -225,7 +227,7 @@ export function useSync(role: Role) {
       pending.current = { pageId: targetPage, patch: wirePatch, replace };
     }
     if (ready.current && !timer.current) timer.current = setTimeout(flushPending, 16);
-  }, [role, sendState, flushPending]);
+  }, [sendState, flushPending]);
 
   const configure = (next: Connection) => {
     try { localStorage.setItem('exhibition-connection-v2', JSON.stringify(next)); } catch { /* 存储受限时仍可连接 */ }
