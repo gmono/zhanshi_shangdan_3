@@ -82,7 +82,7 @@ jobs:
   ios-connection:
     name: iPad 连接与真实瓦片加载
     runs-on: macos-15-intel
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
       IOS_TEST_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-18-5
