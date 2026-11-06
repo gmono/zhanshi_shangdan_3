@@ -70,7 +70,25 @@ for (const pair of [
       await page.screenshot({ path: `tmp/e2e/${info.project.name}-${pair.display.width}-controller.png` });
       await display.screenshot({ path: `tmp/e2e/${info.project.name}-${pair.display.width}-display.png` });
       const target = page.locator('.map-stage[data-page="map-1"] .map-target');
-      await target.dblclick();
+      // 移动WebKit不支持Playwright滚轮；用同一轮浏览器指针事件模拟双指缩放，
+      // 避免远程鼠标双击跨过OpenLayers的250ms识别窗口。系统手势另由XCTest验证。
+      await target.evaluate(target => {
+        const viewport = target.querySelector('.ol-viewport')!;
+        const bounds = viewport.getBoundingClientRect();
+        const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+        const pointer = (type: string, id: number, x: number, buttons: number) => viewport.dispatchEvent(new PointerEvent(type, {
+          bubbles: true, composed: true, cancelable: true, pointerType: 'touch', pointerId: id,
+          isPrimary: id === 101, button: 0, buttons, clientX: x, clientY: center.y,
+        }));
+        pointer('pointerdown', 101, center.x - 60, 1);
+        pointer('pointerdown', 102, center.x + 60, 1);
+        for (let step = 1; step <= 12; step++) {
+          pointer('pointermove', 101, center.x - 60 - step * 10, 1);
+          pointer('pointermove', 102, center.x + 60 + step * 10, 1);
+        }
+        pointer('pointerup', 101, center.x - 180, 0);
+        pointer('pointerup', 102, center.x + 180, 0);
+      });
       await expect.poll(() => states.at(-1)?.mapViews['map-1'].zoom).toBeGreaterThan(0.5);
       const bounds = (await target.boundingBox())!;
       await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
