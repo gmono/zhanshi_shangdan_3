@@ -89,7 +89,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: 校验固定 Xcode 版本
-        run: test "$(xcodebuild -version | head -n 1)" = 'Xcode 16.4'
+        run: |
+          sudo xcode-select --switch "$DEVELOPER_DIR"
+          version=$(xcodebuild -version)
+          test "${version%%$'\n'*}" = 'Xcode 16.4'
       - uses: pnpm/action-setup@v4
         with:
           version: 10.12.1
@@ -119,9 +122,7 @@ jobs:
           node scripts/check-image-refresh.mjs webkit
           pnpm exec playwright test --project=webkit-ipad
       - name: 编译真正的 iPad 应用
-        run: |
-          if [[ "$(uname -m)" == arm64 ]]; then target=aarch64-sim; else target=x86_64; fi
-          pnpm exec tauri ios build --ci --no-sign --target "$target"
+        run: bash scripts/build-ios-simulator.sh
       - name: iPad 模拟器操作连接、读取目录、加载十一张图片瓦片
         run: bash scripts/check-ios-connection.sh
       - name: 保存 iPad 界面、网络请求与 XCTest 结果
@@ -132,6 +133,7 @@ jobs:
           path: |
             tmp/e2e/
             tmp/ios-connection/
+            tmp/ios-simulator-build/
             tmp/image-refresh-check/
             tmp/native-original-contract/result.json
             tmp/resource-progress-check/result.json
@@ -146,7 +148,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: 校验固定 Xcode 版本
-        run: test "$(xcodebuild -version | head -n 1)" = 'Xcode 16.4'
+        run: |
+          sudo xcode-select --switch "$DEVELOPER_DIR"
+          version=$(xcodebuild -version)
+          test "${version%%$'\n'*}" = 'Xcode 16.4'
       - uses: pnpm/action-setup@v4
         with:
           version: 10.12.1
