@@ -77,3 +77,24 @@ describe('页面局部状态补丁', () => {
     expect(mergeStatePatch(base, 'comparison', { innerSplits: [[0.1], [0.2], []] })).toBeNull();
   });
 });
+
+describe('主页三个地点独立视角', () => {
+  const base = { center: [0, 0], zoom: 3, showPoints: false, page: 'comparison', comparison: true, outerSplits: [1 / 3, 2 / 3], innerSplits: [[0.5], [0.5], [0.5]], splits: [0.33, 0.67], mapViews: {} };
+  const first = { center: [0.3, 0.4], zoom: 2, space: 'image-relative' };
+  const second = { center: [0.7, 0.6], zoom: 1, space: 'image-relative' };
+  it('快照保留三个地点各自的相对视角', () => {
+    const comparisonViews = { 'place-1': first, 'place-2': second };
+    expect(parseState({ ...base, comparisonViews })).toMatchObject({ comparisonViews });
+  });
+  it('不同地点的并发补丁保留彼此视角及分割线', () => {
+    const one = mergeStatePatch(base, 'comparison', { comparisonViews: { 'place-1': first } });
+    const two = mergeStatePatch(one, 'comparison', { comparisonViews: { 'place-2': second }, innerSplits: { 2: [0.8] } });
+    expect(two).toMatchObject({ comparisonViews: { 'place-1': first, 'place-2': second }, innerSplits: [[0.5], [0.5], [0.8]] });
+  });
+  it('拒绝错误地点、越界相机及非主页写入', () => {
+    for (const comparisonViews of [{ 'place-0': first }, { 'place-4': first }, { 'place-01': first }, { 'place-1': { ...first, center: [1.2, 0] } }, { 'place-1': { ...first, space: 'pixels' } }]) {
+      expect(parseState({ ...base, comparisonViews })).toBeNull();
+    }
+    expect(mergeStatePatch(base, 'map-1', { comparisonViews: { 'place-1': first } })).toBeNull();
+  });
+});

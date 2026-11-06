@@ -188,3 +188,25 @@ it('收到其他控制端快照时保留在途本地补丁，母线确认后收�
   act(() => ws.stateAck(write.id, combined, 3));
   expect(result.current.state).toEqual(combined);
 });
+
+it('主页不同地点的视角在16ms内合并，远端地点更新与本地在途视角互不覆盖', async () => {
+  const { result, ws } = await connect('controller');
+  act(() => { ws.onopen?.(); ws.snapshot(initialState, 1); });
+  ws.sent = [];
+  vi.useFakeTimers();
+  const first = { center: [0.3, 0.4] as [number, number], zoom: 2, space: 'image-relative' as const };
+  const second = { center: [0.6, 0.7] as [number, number], zoom: 1, space: 'image-relative' as const };
+  act(() => {
+    result.current.update({ comparisonViews: { 'place-1': first } }, 'comparison');
+    result.current.update({ comparisonViews: { 'place-2': second } }, 'comparison');
+    vi.advanceTimersByTime(16);
+  });
+  expect(ws.sent).toHaveLength(1);
+  const write = JSON.parse(ws.sent[0]);
+  expect(write.patch.comparisonViews).toEqual({ 'place-1': first, 'place-2': second });
+  const remote = { ...initialState, comparisonViews: { 'place-3': first } };
+  act(() => ws.snapshot(remote, 2));
+  expect(result.current.state.comparisonViews).toEqual({ 'place-1': first, 'place-2': second, 'place-3': first });
+  act(() => ws.stateAck(write.id, { ...remote, comparisonViews: { ...remote.comparisonViews, 'place-1': first, 'place-2': second } }, 3));
+  expect(result.current.state.comparisonViews).toEqual({ 'place-1': first, 'place-2': second, 'place-3': first });
+});

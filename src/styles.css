@@ -98,6 +98,9 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 .split-container, .split-panel, .map-surface { position: absolute; inset: 0; overflow: hidden; }
 .split-panel { right: auto; }
 .split-inner > .split-panel { right: 0; }
+/* 整个地点的手势交给底层地图；上层图片仅显示，分割线仍单独接收触摸。 */
+.split-inner.has-underlay > .split-panel { pointer-events: none; }
+.split-inner.has-underlay > .map-surface .map-raster { clip-path: var(--map-clip); }
 .split-outer > .outer-divider { z-index: 6; }
 .main-toolbar .map-page-buttons { padding: 3px 50px; min-height: 48px; align-items: center; }
 .map-page-buttons ion-button.button-disabled { opacity: 1; --color: #f4f7f5; }

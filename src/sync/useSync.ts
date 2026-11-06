@@ -27,7 +27,7 @@ export const isIPv4 = (value: string) => /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}
 
 function combinePatches(first: Record<string, unknown>, second: Record<string, unknown>) {
   const combined = { ...first, ...second };
-  for (const key of ['mapViews', 'innerSplits']) {
+  for (const key of ['mapViews', 'comparisonViews', 'innerSplits']) {
     const a = first[key], b = second[key];
     if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
       combined[key] = { ...a, ...b };
@@ -43,7 +43,7 @@ function replayUpdates(base: MapState, updates: PendingUpdate[]) {
 function normalizeState(value: unknown): MapState | null {
   const parsed = parseState(value);
   if (!parsed) return null;
-  return { ...initialState, ...parsed, mapViews: parsed.mapViews || initialState.mapViews } as MapState;
+  return { ...initialState, ...parsed, mapViews: parsed.mapViews || initialState.mapViews, comparisonViews: parsed.comparisonViews || initialState.comparisonViews } as MapState;
 }
 
 export function useSync(role: Role) {

@@ -63,12 +63,23 @@ fn valid_state(value: &Value) -> bool {
         let Some(cameras) = cameras.as_object() else { return false };
         if cameras.len() > 32 || cameras.iter().any(|(page, camera)| !page.strip_prefix("map-").is_some_and(|n| !n.is_empty() && !n.starts_with('0') && n.len() <= 2 && n.chars().all(|ch| ch.is_ascii_digit())) || !valid_camera(camera)) { return false; }
     }
+    if let Some(cameras) = value.get("comparisonViews") {
+        let Some(cameras) = cameras.as_object() else { return false };
+        if cameras.len() > inner.len() || cameras.iter().any(|(place, camera)| {
+            let valid_place = place.strip_prefix("place-").is_some_and(|number| {
+                !number.is_empty() && !number.starts_with('0') && number.len() <= 2
+                    && number.chars().all(|ch| ch.is_ascii_digit())
+                    && number.parse::<usize>().is_ok_and(|index| index <= inner.len())
+            });
+            !valid_place || !valid_camera(camera) || camera.get("space").and_then(Value::as_str) != Some("image-relative")
+        }) { return false; }
+    }
     true
 }
 
 fn merge_state_patch(base: Option<&Value>, page_id: &str, patch: &Value, replace: bool) -> Option<Value> {
     if !valid_page(page_id) || !patch.is_object() { return None; }
-    let fields = ["center", "zoom", "showPoints", "comparison", "page", "outerSplits", "innerSplits", "mapViews", "splits"];
+    let fields = ["center", "zoom", "showPoints", "comparison", "page", "outerSplits", "innerSplits", "mapViews", "comparisonViews", "splits"];
     let patch_object = patch.as_object()?;
     if patch_object.keys().any(|key| !fields.contains(&key.as_str()))
         || patch.get("page").and_then(Value::as_str).is_some_and(|page| page != page_id) { return None; }
@@ -76,7 +87,7 @@ fn merge_state_patch(base: Option<&Value>, page_id: &str, patch: &Value, replace
     let mut next = base.filter(|state| valid_state(state))?.clone();
     let next_object = next.as_object_mut()?;
     for (key, value) in patch_object {
-        if key != "innerSplits" && key != "mapViews" { next_object.insert(key.clone(), value.clone()); }
+        if key != "innerSplits" && key != "mapViews" && key != "comparisonViews" { next_object.insert(key.clone(), value.clone()); }
     }
     if let Some(patch_views) = patch.get("mapViews") {
         if page_id == "comparison" { return None; }
@@ -95,6 +106,12 @@ fn merge_state_patch(base: Option<&Value>, page_id: &str, patch: &Value, replace
             if index >= inner.len() || !valid_splits(splits) { return None; }
             inner[index] = splits.clone();
         }
+    }
+    if let Some(patch_views) = patch.get("comparisonViews") {
+        if page_id != "comparison" { return None; }
+        let patch_views = patch_views.as_object()?;
+        let views = next_object.entry("comparisonViews").or_insert_with(|| json!({})).as_object_mut()?;
+        for (key, camera) in patch_views { views.insert(key.clone(), camera.clone()); }
     }
     valid_state(&next).then_some(next)
 }
@@ -305,6 +322,23 @@ mod tests {
     use futures_util::{SinkExt, StreamExt};
     use tokio::{time::{sleep, timeout}, net::TcpListener};
     use tokio_tungstenite::connect_async;
+
+    #[test]
+    fn comparison_cameras_merge_by_place_without_overwriting_splits() {
+        let seed = json!({"center":[0,0],"zoom":3,"showPoints":false,"comparison":true,"page":"comparison","outerSplits":[0.333,0.667],"innerSplits":[[0.2],[0.3],[0.4]],"mapViews":{},"splits":[0.3,0.7]});
+        let first = json!({"center":[0.3,0.4],"zoom":2,"space":"image-relative"});
+        let second = json!({"center":[0.7,0.6],"zoom":1,"space":"image-relative"});
+        let one = merge_state_patch(Some(&seed), "comparison", &json!({"comparisonViews":{"place-1":first}}), false).unwrap();
+        let two = merge_state_patch(Some(&one), "comparison", &json!({"comparisonViews":{"place-2":second},"innerSplits":{"2":[0.8]}}), false).unwrap();
+        assert_eq!(two["comparisonViews"], json!({"place-1":first,"place-2":second}));
+        assert_eq!(two["innerSplits"], json!([[0.2],[0.3],[0.8]]));
+        assert!(merge_state_patch(Some(&seed), "map-1", &json!({"comparisonViews":{"place-1":first}}), false).is_none());
+        for key in ["place-0", "place-4", "place-01", "__proto__"] {
+            let mut invalid = seed.clone();
+            invalid["comparisonViews"] = json!({(key):first});
+            assert!(!valid_state(&invalid));
+        }
+    }
 
     async fn connect_controller(address: std::net::SocketAddr) -> tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>> {
         let (mut socket, _) = connect_async(format!("ws://{address}")).await.unwrap();

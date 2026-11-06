@@ -7,7 +7,6 @@ import { initialState } from './config';
 import { MapStage } from './MapStage';
 import { initialCamera } from './initialCamera';
 
-vi.mock('./SplitContainer', () => ({ SplitContainer: () => null }));
 const maps = vi.hoisted(() => [] as Array<{
   target: HTMLElement | undefined;
   view: View;
@@ -155,5 +154,48 @@ it('相对视角在横竖屏切换时按各自画布尺寸重新适配，保持�
   act(() => observers[0]());
   expect(view.getResolution()).toBeCloseTo(Math.max(16000 / size[0], 9000 / size[1]) / 2);
   expect(view.getCenter()).toEqual([10400, -3150]);
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+const comparisonCatalog = {
+  locations: [1, 2, 3].map(index => ({ id: `place-${index}`, label: ['左屏', '中屏', '右屏'][index - 1], images: [
+    { url: `/zoomify/place-${index}-a/`, width: 1600, height: 1000 },
+    { url: `/zoomify/place-${index}-b/`, width: 3200, height: 2000 },
+  ] })),
+  maps: [{ id: 'map-1', label: '图1', url: '/zoomify/map-1/', width: 1600, height: 1000 }],
+};
+
+it('主页仅发布被操作地点的相机，同地点两张不同尺寸图片一起缩放和平移', () => {
+  const onChange = vi.fn();
+  const home = { ...initialState, page: 'comparison', innerSplits: [[0.5], [0.5], [0.5]] };
+  const props = { state: home, interactive: true, onChange, catalog: comparisonCatalog };
+  const screen = render(createElement(MapStage, props));
+  expect(maps).toHaveLength(6);
+  const master = maps[0];
+  const other = maps.slice(2).map(map => ({ center: map.view.getCenter(), zoom: map.view.getZoom() }));
+  act(() => { master.view.setZoom(master.view.getZoom()! + 1); master.view.setCenter([960, -400]); master.events.moveend(); });
+  expect(onChange).toHaveBeenCalledWith({ comparisonViews: { 'place-1': { center: [0.6, 0.4], zoom: 1, space: 'image-relative' } } });
+  const patch = onChange.mock.calls.at(-1)![0];
+  onChange.mockClear();
+  screen.rerender(createElement(MapStage, { ...props, state: { ...home, ...patch } }));
+  expect(maps[0].view.getCenter()).toEqual([960, -400]);
+  expect(maps[1].view.getCenter()).toEqual([1920, -800]);
+  expect(maps[1].view.getZoom()).toBeCloseTo(maps[0].view.getZoom()! + 1);
+  expect(maps.slice(2).map(map => ({ center: map.view.getCenter(), zoom: map.view.getZoom() }))).toEqual(other);
+  expect(onChange).not.toHaveBeenCalled();
+  expect(maps).toHaveLength(6);
+});
+
+it('主页远端地点相机只应用于该地点且不反向广播，接收手势的底图覆盖整块区域', () => {
+  const onChange = vi.fn();
+  const props = { state: { ...initialState, innerSplits: [[0.5], [0.5], [0.5]] }, interactive: true, onChange, catalog: comparisonCatalog };
+  const screen = render(createElement(MapStage, props));
+  const camera = { center: [0.7, 0.3] as [number, number], zoom: 2, space: 'image-relative' as const };
+  screen.rerender(createElement(MapStage, { ...props, state: { ...props.state, comparisonViews: { 'place-2': camera } } }));
+  expect(maps[2].view.getCenter()).toEqual([1120, -300]);
+  expect(maps[3].view.getCenter()).toEqual([2240, -600]);
+  expect(maps[0].view.getCenter()).toEqual([800, -500]);
+  expect(maps[4].view.getCenter()).toEqual([800, -500]);
+  expect(screen.container.querySelectorAll('.split-inner > .map-surface')).toHaveLength(3);
   expect(onChange).not.toHaveBeenCalled();
 });

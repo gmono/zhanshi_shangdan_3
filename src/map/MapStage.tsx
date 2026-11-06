@@ -1,11 +1,11 @@
-import { memo, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
 import XYZ from 'ol/source/XYZ';
 import Zoomify from 'ol/source/Zoomify';
 import { defaults as interactions } from 'ol/interaction/defaults';
-import { mapConfig, initialState, locations, mapPages, evenSplits, leftEdgeSplits } from './config';
+import { mapConfig, locations, mapPages, evenSplits, leftEdgeSplits } from './config';
 import { SplitContainer } from './SplitContainer';
 import type { MapState, MapViewState } from '../sync/protocol.mjs';
 import type { ResourceCatalog, ImageResource } from './resourceCatalog';
@@ -27,11 +27,14 @@ export const MapStage = memo(function MapStage({ state, interactive, showErrors 
     {comparison ? <SplitContainer splits={outer} interactive={false} label="地点" level="outer" onChange={quiet}>
       {places.map((place, placeIndex) => {
         const inner = state.innerSplits?.[placeIndex]?.length === place.images.length - 1 ? state.innerSplits[placeIndex] : leftEdgeSplits(place.images.length);
-        return <SplitContainer key={place.id} splits={inner} interactive={interactive} label={`${place.label}图片`} level="inner" onChange={splits => {
+        const placeCamera = state.comparisonViews?.[place.id] || initialCamera();
+        return <SplitContainer key={place.id} splits={inner} interactive={interactive} label={`${place.label}图片`} level="inner"
+          underlay={<MapSurface resource={place.images[0]} tileHost={tileHost} interactive={interactive} publishing={state.page === 'comparison'} active={active} showErrors={showErrors} fit={false} camera={placeCamera} clipEnd={inner[0] ?? 1} onChange={next => onChange({ comparisonViews: { [place.id]: next } })} />}
+          onChange={splits => {
           const innerSplits = places.map((item, index) => index === placeIndex ? splits : state.innerSplits?.[index] || leftEdgeSplits(item.images.length));
           onChange({ innerSplits });
         }}>
-          {place.images.map((resource, index) => <MapSurface key={resource.url + (resource.version ?? '') + index} resource={resource} tileHost={tileHost} interactive={false} active={active} showErrors={showErrors} fit camera={initialState} onChange={quiet} />)}
+          {place.images.map((resource, index) => index === 0 ? null : <MapSurface key={resource.url + (resource.version ?? '') + index} resource={resource} tileHost={tileHost} interactive={false} active={active} showErrors={showErrors} fit={false} camera={placeCamera} onChange={quiet} />)}
         </SplitContainer>;
       })}
     </SplitContainer> : <MapSurface resource={mapPage} tileHost={tileHost} interactive={interactive} publishing={state.page === pageId} active={active} showErrors={showErrors} fit={false} camera={camera} onChange={next => onChange({ mapViews: { ...state.mapViews, [pageId]: next } })} />}
@@ -39,8 +42,8 @@ export const MapStage = memo(function MapStage({ state, interactive, showErrors 
 }, (previous, next) => previous.pageId === next.pageId && previous.interactive === next.interactive && previous.showErrors === next.showErrors && previous.active === next.active && previous.catalog === next.catalog && previous.tileHost === next.tileHost && previous.onChange === next.onChange
   && (previous.state === next.state || (previous.active === false && next.active === false)));
 
-interface SurfaceProps { resource: ImageResource; tileHost?: string; interactive: boolean; publishing?: boolean; active: boolean; showErrors: boolean; fit: boolean; camera: MapViewState; onChange: (value: MapViewState) => void }
-function MapSurface({ resource, tileHost, interactive, publishing = false, active, showErrors, fit, camera, onChange }: SurfaceProps) {
+interface SurfaceProps { resource: ImageResource; tileHost?: string; interactive: boolean; publishing?: boolean; active: boolean; showErrors: boolean; fit: boolean; camera: MapViewState; clipEnd?: number; onChange: (value: MapViewState) => void }
+function MapSurface({ resource, tileHost, interactive, publishing = false, active, showErrors, fit, camera, clipEnd, onChange }: SurfaceProps) {
   const { url, width, height, version } = resource;
   const root = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
@@ -146,7 +149,9 @@ function MapSurface({ resource, tileHost, interactive, publishing = false, activ
     if (centerChanged || zoomChanged) mapRef.current?.renderSync();
     applying.current = false;
   }, [camera, fit, interactive, active, width, height]);
-  return <div className="map-surface">
+  // 只裁剪图片层，整块地点保留同一个 OpenLayers 触摸目标。
+  // 双指分处图片分割线两侧时，也会进入同一个标准手势处理器。
+  return <div className="map-surface" style={clipEnd === undefined ? undefined : { '--map-clip': `inset(0 ${(1 - clipEnd) * 100}% 0 0)` } as CSSProperties}>
     <div className="map-target" ref={root} />
     {showErrors && tileError && <div className="tile-error" role="status">图片加载失败</div>}
     {showErrors && !mapConfig.image && <div className="map-attribution">{mapConfig.attribution}</div>}

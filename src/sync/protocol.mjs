@@ -3,7 +3,7 @@ const splitsValid = values => Array.isArray(values) && values.every((n, i) => Nu
 const pageValid = value => typeof value === 'string' && /^(comparison|map-[1-9][0-9]?)$/.test(value);
 export function parseState(value) {
   if (!cameraValid(value) || typeof value.showPoints !== 'boolean' || typeof value.comparison !== 'boolean') return null;
-  const { center, zoom, showPoints, comparison, splits, page, outerSplits, innerSplits, mapViews } = value;
+  const { center, zoom, showPoints, comparison, splits, page, outerSplits, innerSplits, mapViews, comparisonViews } = value;
   const legacy = page === undefined && outerSplits === undefined && innerSplits === undefined;
   if (legacy) {
     if (!splitsValid(splits) || splits.length !== 2) return null;
@@ -21,13 +21,21 @@ export function parseState(value) {
       cameras[key] = { center: [...camera.center], zoom: camera.zoom, ...(camera.space ? { space: camera.space } : {}) };
     }
   }
-  return { center: [...center], zoom, showPoints, comparison: page === 'comparison', page, outerSplits: [...outerSplits], innerSplits: innerSplits.map(list => [...list]), splits: [...splits], ...(mapViews !== undefined ? { mapViews: cameras } : {}) };
+  const placeCameras = {};
+  if (comparisonViews !== undefined) {
+    if (!comparisonViews || typeof comparisonViews !== 'object' || Array.isArray(comparisonViews) || Object.keys(comparisonViews).length > innerSplits.length) return null;
+    for (const [key, camera] of Object.entries(comparisonViews)) {
+      if (!/^place-[1-9][0-9]?$/.test(key) || Number(key.slice(6)) > innerSplits.length || !cameraValid(camera) || camera.space !== 'image-relative' || camera.center.some(n => n < 0 || n > 1)) return null;
+      placeCameras[key] = { center: [...camera.center], zoom: camera.zoom, space: 'image-relative' };
+    }
+  }
+  return { center: [...center], zoom, showPoints, comparison: page === 'comparison', page, outerSplits: [...outerSplits], innerSplits: innerSplits.map(list => [...list]), splits: [...splits], ...(mapViews !== undefined ? { mapViews: cameras } : {}), ...(comparisonViews !== undefined ? { comparisonViews: placeCameras } : {}) };
 }
 export function canPublish(role) { return role === 'controller' || role === 'display'; }
 
 export function mergeStatePatch(base, pageId, patch, replace = false) {
   if (!pageValid(pageId) || !patch || typeof patch !== 'object' || Array.isArray(patch)) return null;
-  const fields = ['center', 'zoom', 'showPoints', 'comparison', 'page', 'outerSplits', 'innerSplits', 'mapViews', 'splits'];
+  const fields = ['center', 'zoom', 'showPoints', 'comparison', 'page', 'outerSplits', 'innerSplits', 'mapViews', 'comparisonViews', 'splits'];
   if (Object.keys(patch).some(key => !fields.includes(key))) return null;
   if (patch.page !== undefined && patch.page !== pageId) return null;
   if (replace) return parseState(patch);
@@ -36,13 +44,18 @@ export function mergeStatePatch(base, pageId, patch, replace = false) {
 
   const next = { ...previous };
   for (const key of fields) {
-    if (key !== 'innerSplits' && key !== 'mapViews' && patch[key] !== undefined) next[key] = patch[key];
+    if (key !== 'innerSplits' && key !== 'mapViews' && key !== 'comparisonViews' && patch[key] !== undefined) next[key] = patch[key];
   }
 
   if (patch.mapViews !== undefined) {
     if (pageId === 'comparison' || !patch.mapViews || typeof patch.mapViews !== 'object' || Array.isArray(patch.mapViews)) return null;
     if (Object.keys(patch.mapViews).some(key => key !== pageId)) return null;
     next.mapViews = { ...previous.mapViews, ...patch.mapViews };
+  }
+
+  if (patch.comparisonViews !== undefined) {
+    if (pageId !== 'comparison' || !patch.comparisonViews || typeof patch.comparisonViews !== 'object' || Array.isArray(patch.comparisonViews)) return null;
+    next.comparisonViews = { ...previous.comparisonViews, ...patch.comparisonViews };
   }
 
   if (patch.innerSplits !== undefined) {

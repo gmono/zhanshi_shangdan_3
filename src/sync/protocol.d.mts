@@ -9,6 +9,7 @@ export interface MapState {
   outerSplits: number[];
   innerSplits: number[][];
   mapViews?: Record<string, MapViewState>;
+  comparisonViews?: Record<string, MapViewState>;
   splits: [number, number];
 }
 export type StatePatch = Omit<Partial<MapState>, 'innerSplits'> & { innerSplits?: number[][] | Record<string, number[]> };

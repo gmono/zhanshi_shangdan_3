@@ -6,10 +6,11 @@ interface Props {
   label: string;
   level: 'outer' | 'inner';
   children: ReactNode[];
+  underlay?: ReactNode;
   onChange: (splits: number[]) => void;
 }
 
-export function SplitContainer({ splits, interactive, label, level, children, onChange }: Props) {
+export function SplitContainer({ splits, interactive, label, level, children, underlay, onChange }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const drag = useRef<{ pointer: number; index: number } | null>(null);
   const edges = [0, ...splits, 1];
@@ -23,7 +24,8 @@ export function SplitContainer({ splits, interactive, label, level, children, on
     const box = root.current.getBoundingClientRect();
     if (box.width > 0) move(drag.current.index, (clientX - box.left) / box.width);
   };
-  return <div ref={root} className={`split-container split-${level}`} data-splits={JSON.stringify(splits)}>
+  return <div ref={root} className={`split-container split-${level}${underlay ? ' has-underlay' : ''}`} data-splits={JSON.stringify(splits)}>
+    {underlay}
     {children.map((child, index) => <div key={index} className="split-panel" style={level === 'outer'
       ? { left: `${edges[index] * 100}%`, width: `${(edges[index + 1] - edges[index]) * 100}%` }
       : { inset: 0, clipPath: `inset(0 ${(1 - edges[index + 1]) * 100}% 0 ${edges[index] * 100}%)` }}>
