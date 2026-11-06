@@ -106,6 +106,8 @@ jobs:
           workspaces: tests/native -> ../../tmp/native-test-target
           cache-on-failure: true
       - run: pnpm install --frozen-lockfile
+      - name: 提前验证固定 iPad 模拟器与工程架构
+        run: bash scripts/build-ios-simulator.sh --prepare-only
       - run: brew install vips xcodegen
       - name: 编译生产资源与同步服务的测试入口
         run: CARGO_TARGET_DIR="$PWD/tmp/native-test-target" cargo build --manifest-path tests/native/Cargo.toml --locked

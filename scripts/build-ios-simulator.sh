@@ -18,6 +18,7 @@ NODE
 )
 xcrun simctl boot "$device" 2>/dev/null || true
 xcrun simctl bootstatus "$device" -b
+xcrun simctl list runtimes -j > "$report/runtimes.json"
 project="$root/src-tauri/gen/apple/tauronic.xcodeproj/project.pbxproj"
 cp "$project" "$report/project.pbxproj.original"
 trap 'cp "$report/project.pbxproj.original" "$project"' EXIT
@@ -29,11 +30,13 @@ const source = fs.readFileSync(file, 'utf8');
 if (!source.includes('SDKROOT = iphoneos;')) throw Error('未找到真机 SDK 配置，拒绝盲目修改工程');
 fs.writeFileSync(file, source.replaceAll('SDKROOT = iphoneos;', 'SDKROOT = iphonesimulator;'));
 NODE
+xcodebuild -showBuildSettings -sdk iphonesimulator -workspace "$root/src-tauri/gen/apple/tauronic.xcodeproj/project.xcworkspace" -scheme tauronic_iOS > "$report/build-settings.txt"
 xcodebuild -showdestinations -workspace "$root/src-tauri/gen/apple/tauronic.xcodeproj/project.xcworkspace" -scheme tauronic_iOS > "$report/destinations.txt"
 if ! grep -Fq "$device" "$report/destinations.txt"; then
   cat "$report/destinations.txt"
   echo 'Xcode 未列出固定 iPad 模拟器目的端' >&2
   exit 1
 fi
+if [[ "${1:-}" == --prepare-only ]]; then exit 0; fi
 if [[ "$(uname -m)" == arm64 ]]; then target=aarch64-sim; else target=x86_64; fi
 pnpm exec tauri ios build --ci --no-sign --target "$target"
