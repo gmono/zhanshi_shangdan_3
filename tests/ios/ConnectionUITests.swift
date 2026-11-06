@@ -33,8 +33,7 @@ final class ConnectionUITests: XCTestCase {
         app.buttons["返回"].firstMatch.tap()
         XCTAssertTrue(app.buttons["图1"].waitForExistence(timeout: 60), "连接后未加载 Windows 原图目录")
         let firstMap = app.buttons["图1"]
-        let ready = expectation(for: NSPredicate { _, _ in firstMap.isEnabled && firstMap.isHittable }, evaluatedWith: firstMap, handler: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed, "Ionic 页面转场未完成")
+        waitUntilInteractive(firstMap, "图1")
         let webView = app.webViews.firstMatch
         XCTAssertTrue(webView.waitForExistence(timeout: 15), "未找到原生 WebView")
         let splitStart = webView.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.2))
@@ -42,7 +41,9 @@ final class ConnectionUITests: XCTestCase {
         splitStart.press(forDuration: 0.1, thenDragTo: splitEnd)
         capture(app, "已连接并加载三图")
         for number in 1...10 {
-            app.buttons["图\(number)"].tap()
+            let map = app.buttons["图\(number)"]
+            waitUntilInteractive(map, "图\(number)")
+            map.tap()
             let back = app.buttons["返回"].firstMatch
             XCTAssertTrue(back.waitForExistence(timeout: 15))
             sleep(2)
@@ -54,9 +55,17 @@ final class ConnectionUITests: XCTestCase {
                 panStart.press(forDuration: 0.1, thenDragTo: panEnd)
                 capture(app, "原生双指缩放与平移")
             }
+            waitUntilInteractive(back, "返回")
             back.tap()
             XCTAssertTrue(app.buttons["图1"].waitForExistence(timeout: 15))
         }
+    }
+
+    private func waitUntilInteractive(_ element: XCUIElement, _ name: String) {
+        let ready = expectation(for: NSPredicate { _, _ in
+            element.exists && element.isEnabled && element.isHittable
+        }, evaluatedWith: element, handler: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed, "Ionic 转场后按钮未恢复可点击：\(name)")
     }
 
     private func capture(_ app: XCUIApplication, _ name: String) {
