@@ -32,7 +32,7 @@ DerivedData/
 *.msix
 *.appx
 *.pdb
-
+tests/native
 # Python 本地环境、缓存与工具输出。
 .venv/
 __pycache__/
