@@ -71,6 +71,11 @@ test('平板浮动按钮恢复当前页视角并同步，保留分割线，Windo
     await page.getByRole('button', { name: '打开设置', exact: true }).click();
     await expect(page.locator('.settings-page:visible')).toBeVisible();
     await expect(reset).toHaveCount(0);
+    // 共享房间留在主页，让后续既有用例从相同基线开始。
+    await page.locator('.settings-page:visible').getByRole('button', { name: '返回', exact: true }).click();
+    await expect(page.locator('.map-stage[data-page="map-1"]:visible')).toBeVisible();
+    await page.getByRole('region', { name: '地图操作面板' }).getByRole('button', { name: '返回', exact: true }).click();
+    await expect.poll(() => state()?.page).toBe('comparison');
     expect(errors).toEqual([]);
   } finally {
     await info.attach('复位同步状态与异常', { body: JSON.stringify({ states, errors }, null, 2), contentType: 'application/json' });
