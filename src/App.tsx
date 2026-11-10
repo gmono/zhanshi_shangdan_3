@@ -11,6 +11,7 @@ import { initialCamera } from './map/initialCamera';
 import type { ResourceCatalog } from './map/resourceCatalog';
 import { useSync } from './sync/useSync';
 import { ConnectionPanel } from './components/connection/ConnectionPanel';
+import { CameraReset } from './components/CameraReset';
 import { useResourceCatalog } from './map/useResourceCatalog';
 import { ResourceStatus } from './map/ResourceStatus';
 import type { ResourceProgress } from './map/resourceProgress';
@@ -124,7 +125,9 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
     <Route exact path="/" render={() => <MapPage pageId="comparison" state={sync.state} update={sync.update} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} progress={resources.progress} />} />
     <Route exact path="/map/:pageId" render={({ match }) => <MapPage key={match.params.pageId} pageId={match.params.pageId} state={sync.state} update={sync.update} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} progress={resources.progress} />} />
     <Route exact path="/settings" render={() => <ConnectionPanel value={sync.connection} onSave={sync.configure} status={sync.status} displays={sync.peers.displays} error={sync.error} homePath={`/${route.search}`} />} />
-  </IonRouterOutlet><FloatingControls pathname={route.pathname} search={route.search} catalog={catalog} preparePage={preparePage} navigating={navigating} /></div>;
+  </IonRouterOutlet>
+    {connected && catalog && resources.progress?.phase !== 'error' && <CameraReset state={sync.state} pageId={pageId} catalog={catalog} disabled={navigating} onChange={update} />}
+    <FloatingControls pathname={route.pathname} search={route.search} catalog={catalog} preparePage={preparePage} navigating={navigating} /></div>;
 }
 
 function MapPage({ state, update, pageId, connected, tileHost, catalog, resourceMessage, progress }: { state: Sync['state']; update: Sync['update']; pageId: string; connected: boolean; tileHost: string; catalog: ResourceCatalog | null; resourceMessage: string; progress?: ResourceProgress | null }) {

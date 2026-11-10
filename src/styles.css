@@ -54,6 +54,9 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 .floating-controls .map-page-buttons ion-button { --background: transparent; --background-activated: #ffffff24; --color: #f2f4f3; --border-radius: 999px; min-height: 44px; }
 .floating-page-title { padding-inline: 10px; font-size: 15px; white-space: nowrap; }
 .floating-settings { border-left: 1px solid #ffffff26; padding-left: 4px; }
+.camera-reset { z-index: 110; top: calc(16px + env(safe-area-inset-top, 0px)); right: calc(16px + env(safe-area-inset-right, 0px)); }
+.camera-reset ion-fab-button { --background: #22272bd9; --background-activated: #3c4548; --color: #f2f4f3; --box-shadow: 0 4px 16px #0005; --border-color: #ffffff26; --border-style: solid; --border-width: 1px; }
+.camera-reset ion-icon { font-size: 24px; }
 .map-frame { position: absolute; inset: 0; min-width: 0; min-height: 0; overflow: hidden; background: #111416; }
 .map-stage { position: absolute; inset: 0; overflow: hidden; }
 .map-stage.is-interactive, .map-stage.is-interactive .map-target .ol-viewport { touch-action: none; }
