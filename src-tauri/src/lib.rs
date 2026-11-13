@@ -66,6 +66,21 @@ async fn stop_sync_relay(relay: State<'_, Arc<relay::RelayHandle>>) -> Result<()
 async fn discover_displays() -> Result<Vec<serde_json::Value>, String> { relay::discover_displays().await }
 
 #[tauri::command]
+fn exit_tablet(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "ios")]
+    {
+        // iOS 的事件循环忽略普通退出请求；用户确认后先清理再结束进程。
+        app.cleanup_before_exit();
+        std::process::exit(0);
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = app;
+        Err("退出按钮仅用于 iPad App".into())
+    }
+}
+
+#[tauri::command]
 fn set_display_fullscreen(enabled: bool, window: tauri::WebviewWindow) -> Result<(), String> {
     #[cfg(not(target_os = "ios"))]
     {
@@ -108,7 +123,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![start_sync_relay, stop_sync_relay, discover_displays, set_display_fullscreen])
+        .invoke_handler(tauri::generate_handler![start_sync_relay, stop_sync_relay, discover_displays, set_display_fullscreen, exit_tablet])
         .run(tauri::generate_context!())
         .expect("展厅地图启动失败");
 }

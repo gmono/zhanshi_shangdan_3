@@ -12,6 +12,7 @@ import type { ResourceCatalog } from './map/resourceCatalog';
 import { useSync } from './sync/useSync';
 import { ConnectionPanel } from './components/connection/ConnectionPanel';
 import { CameraReset } from './components/CameraReset';
+import { TabletExit } from './components/TabletExit';
 import { useResourceCatalog } from './map/useResourceCatalog';
 import { ResourceStatus } from './map/ResourceStatus';
 import type { ResourceProgress } from './map/resourceProgress';
@@ -121,12 +122,14 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
     const path = home ? '/' : `/map/${targetPage}`;
     router.push(`${path}${route.search}`, home ? 'back' : 'forward', home ? 'pop' : pageId === 'comparison' ? 'push' : 'replace');
   }, [pageId, preparePage, connected, catalog, sync.state.page, route.pathname, route.search, router, navigating]);
-  return <div className="controller-shell"><IonRouterOutlet ref={outlet}>
+  const showExit = route.pathname === '/' && sync.state.page === 'comparison';
+  return <div className={`controller-shell${showExit ? ' has-tablet-exit' : ''}`}><IonRouterOutlet ref={outlet}>
     <Route exact path="/" render={() => <MapPage pageId="comparison" state={sync.state} update={sync.update} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} progress={resources.progress} />} />
     <Route exact path="/map/:pageId" render={({ match }) => <MapPage key={match.params.pageId} pageId={match.params.pageId} state={sync.state} update={sync.update} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} progress={resources.progress} />} />
     <Route exact path="/settings" render={() => <ConnectionPanel value={sync.connection} onSave={sync.configure} status={sync.status} displays={sync.peers.displays} error={sync.error} homePath={`/${route.search}`} />} />
   </IonRouterOutlet>
     {connected && catalog && resources.progress?.phase !== 'error' && <CameraReset state={sync.state} pageId={pageId} catalog={catalog} disabled={navigating} onChange={update} />}
+    {showExit && <TabletExit disabled={navigating} />}
     <FloatingControls pathname={route.pathname} search={route.search} catalog={catalog} preparePage={preparePage} navigating={navigating} /></div>;
 }
 

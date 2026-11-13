@@ -57,6 +57,8 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 .camera-reset { z-index: 110; top: calc(16px + env(safe-area-inset-top, 0px)); right: calc(16px + env(safe-area-inset-right, 0px)); }
 .camera-reset ion-fab-button { --background: #22272bd9; --background-activated: #3c4548; --color: #f2f4f3; --box-shadow: 0 4px 16px #0005; --border-color: #ffffff26; --border-style: solid; --border-width: 1px; }
 .camera-reset ion-icon { font-size: 24px; }
+.tablet-exit { position: absolute; z-index: 110; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); width: 88px; margin: 0; min-height: 44px; --background: #22272bd9; --background-activated: #3c4548; --color: #f2f4f3; --border-radius: 999px; --box-shadow: 0 4px 16px #0005; }
+.has-tablet-exit .floating-controls { max-width: calc(100% - 240px - 2 * env(safe-area-inset-left, 0px) - 2 * env(safe-area-inset-right, 0px)); }
 .map-frame { position: absolute; inset: 0; min-width: 0; min-height: 0; overflow: hidden; background: #111416; }
 .map-stage { position: absolute; inset: 0; overflow: hidden; }
 .map-stage.is-interactive, .map-stage.is-interactive .map-target .ol-viewport { touch-action: none; }

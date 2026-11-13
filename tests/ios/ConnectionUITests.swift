@@ -13,9 +13,17 @@ final class ConnectionUITests: XCTestCase {
             return false
         }
         app.launch()
+        let exitButton = app.buttons["退出"]
+        XCTAssertTrue(exitButton.waitForExistence(timeout: 40), "主页未显示退出按钮")
+        exitButton.tap()
+        let cancelExit = app.buttons["取消"]
+        XCTAssertTrue(cancelExit.waitForExistence(timeout: 10), "未显示退出确认弹框")
+        XCTAssertEqual(app.state, .runningForeground, "尚未确认却退出了应用")
+        cancelExit.tap()
         let connect = app.buttons["连接 Windows 大屏"]
         XCTAssertTrue(connect.waitForExistence(timeout: 40), "未显示连接入口")
         connect.tap()
+        XCTAssertFalse(exitButton.exists, "设置页不能显示退出按钮")
         let address = app.textFields.firstMatch
         XCTAssertTrue(address.waitForExistence(timeout: 15), "未显示 Windows 地址输入框")
         address.tap()
@@ -46,6 +54,7 @@ final class ConnectionUITests: XCTestCase {
             map.tap()
             let back = app.buttons["返回"].firstMatch
             XCTAssertTrue(back.waitForExistence(timeout: 15))
+            XCTAssertFalse(exitButton.exists, "单图页不能显示退出按钮")
             sleep(2)
             capture(app, "原图\(number)")
             if number == 1 {
@@ -59,6 +68,13 @@ final class ConnectionUITests: XCTestCase {
             back.tap()
             XCTAssertTrue(app.buttons["图1"].waitForExistence(timeout: 15))
         }
+        waitUntilInteractive(exitButton, "退出")
+        exitButton.tap()
+        let confirmExit = app.buttons["确认退出"]
+        XCTAssertTrue(confirmExit.waitForExistence(timeout: 10), "未显示确认退出按钮")
+        confirmExit.tap()
+        let stopped = expectation(for: NSPredicate { _, _ in app.state == .notRunning }, evaluatedWith: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [stopped], timeout: 15), .completed, "明确确认后应用未退出")
     }
 
     private func waitUntilInteractive(_ element: XCUIElement, _ name: String) {
