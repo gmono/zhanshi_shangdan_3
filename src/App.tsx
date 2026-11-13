@@ -40,6 +40,11 @@ export default function App() {
 function DisplayApp({ sync }: { sync: Sync }) {
   const resources = useResourceCatalog('127.0.0.1', true, true);
   const catalog = resources.catalog;
+  useLayoutEffect(() => {
+    const preventMenu = (event: MouseEvent) => event.preventDefault();
+    document.addEventListener('contextmenu', preventMenu, true);
+    return () => document.removeEventListener('contextmenu', preventMenu, true);
+  }, []);
   useEffect(() => {
     if (isTauri()) void invoke('set_display_fullscreen', { enabled: true }).catch(() => undefined);
   }, []);
