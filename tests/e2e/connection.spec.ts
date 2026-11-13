@@ -118,7 +118,20 @@ test('iPad 控制端连接原生服务后加载原图目录和瓦片，并切换
       await expect.poll(async()=>Math.abs((await target.boundingBox())!.x)).toBeLessThan(1);
       const bounds=(await target.boundingBox())!;
       await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
-      await target.dblclick();
+      // 远程双击在高负载CI中可能跨过OpenLayers的250ms识别窗口。
+      // 与不同分辨率用例一致，在同一轮浏览器事件中注入标准双指序列。
+      await target.evaluate(target=>{
+        const viewport=target.querySelector('.ol-viewport')!;
+        const box=viewport.getBoundingClientRect();
+        const x=box.x+box.width/2,y=box.y+box.height/2;
+        const pointer=(type:string,id:number,distance:number,buttons:number)=>viewport.dispatchEvent(new PointerEvent(type,{
+          bubbles:true,composed:true,cancelable:true,pointerType:'touch',pointerId:id,isPrimary:id===101,
+          button:0,buttons,clientX:x+(id===101?-distance:distance),clientY:y,
+        }));
+        pointer('pointerdown',101,60,1);pointer('pointerdown',102,60,1);
+        for(let step=1;step<=12;step++){pointer('pointermove',101,60+step*10,1);pointer('pointermove',102,60+step*10,1);}
+        pointer('pointerup',101,180,0);pointer('pointerup',102,180,0);
+      });
       await expect.poll(()=>states.at(-1)?.mapViews?.[`map-${i}`]?.zoom).toBeGreaterThan(initialCamera.zoom+0.2);
       await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
       await page.mouse.down();
