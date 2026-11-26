@@ -16,6 +16,8 @@ import 'ol/ol.css';
 interface Props { state: MapState; interactive: boolean; showErrors?: boolean; onChange: (patch: Partial<MapState>) => void; pageId?: string; active?: boolean; tileHost?: string; catalog?: ResourceCatalog }
 const quiet = () => undefined;
 const sameFloat = (a: number, b: number) => Math.abs(a - b) <= Number.EPSILON * 4 * Math.max(1, Math.abs(a), Math.abs(b));
+// 与 src/sync/protocol.mjs、src-tauri/src/relay.rs 的相机校验保持一致。
+const MAX_RELATIVE_ZOOM = 24;
 export const MapStage = memo(function MapStage({ state, interactive, showErrors = interactive, onChange, pageId = state.page, active = true, tileHost, catalog }: Props) {
   const places = catalog?.locations || locations.map(p => ({ ...p, images: p.images.map((url): ImageResource => ({ url, width: mapConfig.width, height: mapConfig.height })) }));
   const pages = catalog?.maps || mapPages.map(p => ({ ...p, width: mapConfig.width, height: mapConfig.height }));
@@ -67,7 +69,9 @@ function MapSurface({ resource, tileHost, interactive, publishing = false, activ
     const firstCamera = localCamera(latest.current, { width, height }, viewport.current);
     const resolutions = mapConfig.image ? (source as Zoomify).getTileGrid()?.getResolutions() : undefined;
     const active = new View({ projection: mapConfig.image ? new Projection({code:'exhibition-pixels',units:'pixels',extent:[0,-height,width,0]}) : mapConfig.projection, center: firstCamera.center, zoom: firstCamera.zoom, minZoom: 0, maxZoom: latest.current.space ? 48 : 24, enableRotation: false, showFullExtent: mapConfig.image,
-      ...(mapConfig.image ? { extent: [0, -height, width, 0], constrainOnlyCenter: !fit,
+      // 完整显示即最小缩放：约束整个视口而不只是中心，避免拖动后图片边缘离开画布。
+      // 常规视图关闭平滑越界，手势过程中也不再短暂露出额外黑边；fit 模式保持原有回弹。
+      ...(mapConfig.image ? { extent: [0, -height, width, 0], constrainOnlyCenter: false, smoothExtentConstraint: fit, smoothResolutionConstraint: fit,
         // 单图允许按本机显示区域连续缩放；瓦片级别仍由 source 的网格选择。
         ...(latest.current.space ? { maxResolution: resolutions?.[0] } : { resolutions }) } : {}) });
     view.current = active;
@@ -82,8 +86,10 @@ function MapSurface({ resource, tileHost, interactive, publishing = false, activ
       frame.current = 0;
       const center = active.getCenter(), zoom = active.getZoom();
       if (!running.current || !interactive || !mayPublish.current || applying.current || !center || zoom === undefined) return;
-      if (latest.current.space && zoom < fitZoom({ width, height }, viewport.current) - 0.0001) {
-        applying.current = true; active.cancelAnimations(); active.setZoom(fitZoom({ width, height }, viewport.current)); applying.current = false;
+      const fit = fitZoom({ width, height }, viewport.current);
+      // 同步协议只接受相对放大 0..24；超出时必须在本机先收敛，否则补丁会被静默拒绝。
+      if (latest.current.space && (zoom < fit - 0.0001 || zoom > fit + MAX_RELATIVE_ZOOM + 0.0001)) {
+        applying.current = true; active.cancelAnimations(); active.setZoom(Math.max(fit, Math.min(fit + MAX_RELATIVE_ZOOM, zoom))); applying.current = false;
       }
       const local = { center: [...center] as [number, number], zoom: active.getZoom() ?? zoom };
       const next = latest.current.space ? relativeCamera(local, { width, height }, viewport.current) : local;

@@ -96,7 +96,8 @@ it('重新进入缓存单图时复位视角并取消离场动画，复用地图�
 });
 
 it('展示窗口尺寸变化不能再次修正消息中的初始缩放', () => {
-  const camera = { center: [8000, -4500] as [number, number], zoom: 0 };
+  // 只验证不重新套用旧消息；消息自身的视角必须已满足当前的完整显示边界。
+  const camera = { center: [8000, -4500] as [number, number], zoom: 5 };
   render(createElement(MapStage, { state: { ...state, mapViews: { 'map-1': camera } }, interactive: false, onChange: vi.fn(), pageId: 'map-1' }));
   const view = maps[0].view;
   view.setViewportSize([3840, 2160]);
@@ -198,4 +199,35 @@ it('主页远端地点相机只应用于该地点且不反向广播，接收手�
   expect(maps[4].view.getCenter()).toEqual([800, -500]);
   expect(screen.container.querySelectorAll('.split-inner > .map-surface')).toHaveLength(3);
   expect(onChange).not.toHaveBeenCalled();
+});
+
+it('完整显示为最小缩放，拖动和缩放后图片边缘都不能离开画布', () => {
+  const onChange = vi.fn();
+  render(createElement(MapStage, { state: { ...initialState, page: 'map-1', comparison: false, mapViews: { 'map-1': initialCamera() } }, interactive: false, onChange, pageId: 'map-1', catalog: comparisonCatalog }));
+  const view = maps[0].view;
+  // 真实环境由 map.updateSize() 把画布尺寸同步给 View；测试地图对象不会代为设置。
+  view.setViewportSize([1024, 712]);
+  const fit = Math.max(1600 / 1024, 1000 / 712);
+  act(() => view.setZoom(0));
+  expect(view.getResolution()).toBeCloseTo(fit);
+  // 完整显示时横向正好铺满，纵向留边必须居中；中心不能自由移动到图片外。
+  act(() => view.setCenter([2400, -1800]));
+  expect(view.getCenter()).toEqual([800, -500]);
+  // 放大后可以平移，但四个边界都不能越过图片。
+  act(() => view.setZoom(view.getZoom()! + 2));
+  act(() => view.setCenter([1600, -1000]));
+  expect(view.getCenter()![0]).toBeCloseTo(1600 - 1024 * view.getResolution()! / 2);
+  expect(view.getCenter()![1]).toBeCloseTo(-1000 + 712 * view.getResolution()! / 2);
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+it('相对放大超过同步协议上限时先收敛到 24 再发布', () => {
+  const onChange = vi.fn();
+  const state = { ...initialState, page: 'map-1', comparison: false, mapViews: { 'map-1': initialCamera() } };
+  render(createElement(MapStage, { state, interactive: true, onChange, pageId: 'map-1', catalog: comparisonCatalog }));
+  const map = maps[0];
+  // viewport.current 初始为原图尺寸，完整显示 fit=3；相对 30 级超过协议允许的 0..24。
+  act(() => { map.view.setZoom(3 + 30); map.events.moveend(); });
+  expect(onChange).toHaveBeenCalledWith({ mapViews: { 'map-1': { center: [0.5, 0.5], zoom: 24, space: 'image-relative' } } });
+  expect(map.view.getZoom()).toBeCloseTo(3 + 24);
 });
