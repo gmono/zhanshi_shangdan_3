@@ -28,3 +28,25 @@ for (const level of ['outer', 'inner'] as const) {
     expect(current()).toEqual([0.98, 0.98]);
   });
 }
+
+it('仅内层可拖动分割线显示中部左右箭头，且不改变整线命中区', () => {
+  const children = [0, 1, 2].map(index => createElement('div', { key: index }));
+  const inner = render(createElement(SplitContainer, { splits: [0.4, 0.7], interactive: true, label: '对比', level: 'inner', onChange: () => undefined, children }));
+  const arrows = inner.container.querySelectorAll('.divider-arrows');
+  expect(arrows).toHaveLength(2);
+  for (const group of arrows) {
+    expect(group.getAttribute('aria-hidden')).toBe('true');
+    expect(group.querySelectorAll('svg')).toHaveLength(2);
+  }
+  expect(inner.getAllByRole('slider')).toHaveLength(2);
+  expect(inner.container.querySelectorAll('.divider-hit-area')).toHaveLength(2);
+  inner.unmount();
+
+  const outer = render(createElement(SplitContainer, { splits: [0.4, 0.7], interactive: true, label: '地点', level: 'outer', onChange: () => undefined, children }));
+  expect(outer.container.querySelectorAll('.divider-arrows')).toHaveLength(0);
+  outer.unmount();
+
+  const passive = render(createElement(SplitContainer, { splits: [0.5], interactive: false, label: '对比', level: 'inner', onChange: () => undefined, children: children.slice(0, 2) }));
+  expect(passive.container.querySelectorAll('.divider-arrows')).toHaveLength(0);
+  expect(passive.queryAllByRole('slider')).toHaveLength(0);
+});

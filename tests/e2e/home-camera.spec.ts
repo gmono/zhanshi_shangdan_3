@@ -107,6 +107,12 @@ test('主页三地点分别双指缩放和平移、整线拖动，Windows 与两
     await controls.getByRole('button', { name: '返回', exact: true }).click();
     await expect.poll(() => state()?.page).toBe('comparison');
     for (const page of pages) await settled(page);
+    // 只有内层可拖动分割线显示中部左右箭头；提示层不接收指针，整线命中区仍然优先。
+    const innerArrows = stage(first).locator('.split-inner .divider-arrows');
+    await expect(innerArrows).toHaveCount(3);
+    await expect(stage(first).locator('.split-outer > .outer-divider .divider-arrows')).toHaveCount(0);
+    const arrow = (await innerArrows.first().boundingBox())!;
+    expect(await first.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('[role="slider"]'), { x: arrow.x + arrow.width / 2, y: arrow.y + arrow.height / 2 })).toBe(true);
     for (let index = 0; index < 3; index++) {
       const bounds = (await place(first, index).boundingBox())!;
       const line = (await place(first, index).getByRole('slider').boundingBox())!;
