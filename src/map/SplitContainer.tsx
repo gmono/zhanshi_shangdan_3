@@ -33,11 +33,9 @@ export function SplitContainer({ splits, interactive, label, level, children, un
     </div>)}
     {splits.map((split, index) => <div key={index} className={`divider ${level}-divider`}
       data-edge={split === 0 ? 'start' : split === 1 ? 'end' : undefined}
+      data-arrow={level === 'inner' && split <= 0.02 ? 'start' : level === 'inner' && split >= 0.98 ? 'end' : undefined}
       style={{ left: `${split * 100}%`, zIndex: (level === 'outer' ? 20 : 3) + (split >= 0.5 ? splits.length - index : index + 1) }}>
-      {level === 'inner' && interactive && <div className="divider-arrows" aria-hidden="true">
-        <svg viewBox="0 0 8 12" focusable="false"><path d="M6.5 1.5 2 6l4.5 4.5" /></svg>
-        <svg viewBox="0 0 8 12" focusable="false"><path d="M1.5 1.5 6 6l-4.5 4.5" /></svg>
-      </div>}
+      {level === 'inner' && interactive && <div className="divider-arrows" aria-hidden="true" />}
       {interactive && <div className="divider-hit-area" role="slider" tabIndex={0} aria-label={`${label}分割线 ${index + 1}`}
         aria-valuenow={split * 100} aria-valuemin={edges[index] * 100} aria-valuemax={edges[index + 2] * 100} aria-orientation="horizontal"
         onPointerDown={event => { event.preventDefault(); event.stopPropagation(); drag.current = { pointer: event.pointerId, index }; event.currentTarget.setPointerCapture(event.pointerId); }}

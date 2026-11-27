@@ -114,10 +114,14 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 .map-stage .outer-divider { width: 4px; background: #f4f6f5; box-shadow: 0 0 7px 1px #0007; }
 .map-stage .inner-divider { width: 1px; background: #ffffffb3; box-shadow: 0 0 2px #0005; }
 /* 内层可拖动分割线中部的纯视觉左右箭头：不接收指针事件，不改变整线命中区。 */
-.inner-divider .divider-arrows { position: absolute; top: 50%; left: 50%; display: flex; align-items: center; gap: 3px; padding: 4px 6px; border: 1px solid #ffffff4d; border-radius: 999px; color: #f4f7f5; background: #14191bc9; box-shadow: 0 2px 7px #0007; transform: translate(-50%, -50%); pointer-events: none; }
-.inner-divider .divider-arrows svg { display: block; width: 8px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.inner-divider[data-edge="start"] .divider-arrows { left: 20px; transform: translateY(-50%); }
-.inner-divider[data-edge="end"] .divider-arrows { left: auto; right: 20px; transform: translateY(-50%); }
+.inner-divider .divider-arrows { position: absolute; top: 50%; left: 50%; display: flex; gap: 2px; transform: translate(-50%, -50%); pointer-events: none; }
+.inner-divider .divider-arrows::before, .inner-divider .divider-arrows::after { content: ''; width: 0; height: 0; border-block: 6px solid transparent; }
+.inner-divider .divider-arrows::before { border-right: 7px solid #ffffffd9; }
+.inner-divider .divider-arrows::after { border-left: 7px solid #ffffffd9; }
+.inner-divider[data-arrow="start"] .divider-arrows { left: 100%; transform: translateY(-50%); }
+.inner-divider[data-arrow="start"] .divider-arrows::before { display: none; }
+.inner-divider[data-arrow="end"] .divider-arrows { left: 0; transform: translate(-100%, -50%); }
+.inner-divider[data-arrow="end"] .divider-arrows::after { display: none; }
 .divider[data-edge="start"] .divider-hit-area { left: 100%; transform: none; }
 .divider[data-edge="end"] .divider-hit-area { left: 0; transform: translateX(-100%); }
 /* 内层贴到地点边界时，触摸区向内延伸，避免被外层线的触摸区完全覆盖。 */

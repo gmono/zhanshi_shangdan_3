@@ -36,11 +36,24 @@ it('仅内层可拖动分割线显示中部左右箭头，且不改变整线命�
   expect(arrows).toHaveLength(2);
   for (const group of arrows) {
     expect(group.getAttribute('aria-hidden')).toBe('true');
-    expect(group.querySelectorAll('svg')).toHaveLength(2);
+    expect(group.children).toHaveLength(0);
   }
   expect(inner.getAllByRole('slider')).toHaveLength(2);
   expect(inner.container.querySelectorAll('.divider-hit-area')).toHaveLength(2);
+  expect(inner.container.querySelectorAll('.inner-divider')[0].getAttribute('data-arrow')).toBeNull();
   inner.unmount();
+
+  const edges = render(createElement(SplitContainer, { splits: [0, 1], interactive: true, label: '对比', level: 'inner', onChange: () => undefined, children }));
+  const dividers = edges.container.querySelectorAll('.inner-divider');
+  expect(dividers[0].getAttribute('data-arrow')).toBe('start');
+  expect(dividers[1].getAttribute('data-arrow')).toBe('end');
+  edges.unmount();
+
+  const near = render(createElement(SplitContainer, { splits: [0.01, 0.99], interactive: true, label: '对比', level: 'inner', onChange: () => undefined, children }));
+  const nearDividers = near.container.querySelectorAll('.inner-divider');
+  expect(nearDividers[0].getAttribute('data-arrow')).toBe('start');
+  expect(nearDividers[1].getAttribute('data-arrow')).toBe('end');
+  near.unmount();
 
   const outer = render(createElement(SplitContainer, { splits: [0.4, 0.7], interactive: true, label: '地点', level: 'outer', onChange: () => undefined, children }));
   expect(outer.container.querySelectorAll('.divider-arrows')).toHaveLength(0);
