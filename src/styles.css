@@ -115,9 +115,9 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 .map-stage .inner-divider { width: 1px; background: #ffffffb3; box-shadow: 0 0 2px #0005; }
 /* 内层可拖动分割线中部的纯视觉左右箭头：不接收指针事件，不改变整线命中区。 */
 .inner-divider .divider-arrows { position: absolute; top: 50%; left: 50%; display: flex; gap: 2px; transform: translate(-50%, -50%); pointer-events: none; }
-.inner-divider .divider-arrows::before, .inner-divider .divider-arrows::after { content: ''; width: 0; height: 0; border-block: 6px solid transparent; }
-.inner-divider .divider-arrows::before { border-right: 7px solid #ffffffd9; }
-.inner-divider .divider-arrows::after { border-left: 7px solid #ffffffd9; }
+.inner-divider .divider-arrows::before, .inner-divider .divider-arrows::after { content: ''; width: 0; height: 0; border-block: 1.2vh solid transparent; }
+.inner-divider .divider-arrows::before { border-right: 1.4vh solid #ffffffd9; }
+.inner-divider .divider-arrows::after { border-left: 1.4vh solid #ffffffd9; }
 .inner-divider[data-arrow="start"] .divider-arrows { left: 100%; transform: translateY(-50%); }
 .inner-divider[data-arrow="start"] .divider-arrows::before { display: none; }
 .inner-divider[data-arrow="end"] .divider-arrows { left: 0; transform: translate(-100%, -50%); }
