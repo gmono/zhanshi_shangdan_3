@@ -97,3 +97,7 @@ Desktop.ini
 *.njsproj
 *.sln
 *.sw?
+# GB28181 虚拟摄像头测试工具的编译产物。
+/tools/gb28181-camera/target/
+# 厂商 SDK 仅本地参考，GB28181 使用公开协议实现。
+/NetSdk_win_x64/
