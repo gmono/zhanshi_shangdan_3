@@ -156,3 +156,4 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 .camera-entry { position: absolute; z-index: 110; left: calc(16px + env(safe-area-inset-left, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); width: 88px; margin: 0; min-height: 44px; --background: #22272bd9; --background-activated: #3c4548; --color: #f2f4f3; --border-radius: 999px; --box-shadow: 0 4px 16px #0005; }
 .has-tablet-camera .floating-controls { max-width: calc(100% - 240px - 2 * env(safe-area-inset-left, 0px) - 2 * env(safe-area-inset-right, 0px)); }
 .display-content .camera-page { position: fixed; inset: 0; width: 100vw; height: 100dvh; }
+.camera-test-badge { position: absolute; z-index: 5; left: 16px; bottom: 16px; padding: 6px 10px; border: 1px solid #ffffff26; border-radius: 999px; color: #cbd4d2; background: #14191bc9; font-size: 12px; pointer-events: none; }

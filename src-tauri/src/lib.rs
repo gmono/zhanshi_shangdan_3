@@ -3,6 +3,10 @@ mod relay;
 mod tile_server;
 #[cfg(not(target_os="ios"))]
 mod map_assets;
+#[cfg(not(target_os="ios"))]
+pub mod camera;
+#[cfg(target_os = "windows")]
+mod camera_sab;
 #[cfg(any(target_os = "windows", test))]
 mod exit_chord;
 #[cfg(target_os = "windows")]
@@ -99,6 +103,18 @@ fn set_display_fullscreen(enabled: bool, window: tauri::WebviewWindow) -> Result
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+#[tauri::command]
+async fn camera_attach(window: tauri::WebviewWindow) -> Result<serde_json::Value, String> {
+    camera_sab::attach(&window).await
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+async fn camera_attach() -> Result<serde_json::Value, String> {
+    Err("相机共享内存仅 Windows 显示端支持".into())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -108,6 +124,11 @@ pub fn run() {
             #[cfg(not(target_os="ios"))]
             {
                 start_tile_server(_app.handle().clone()).map_err(std::io::Error::other)?;
+                let exe=std::env::current_exe().map_err(std::io::Error::other)?;
+                let root=map_assets::resource_root(&exe,std::env::var_os("EXHIBITION_RESOURCE_DIR").as_deref()).map_err(std::io::Error::other)?;
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error)=camera::start(root).await { eprintln!("相机服务启动失败：{error}"); }
+                });
                 let relay=_app.state::<Arc<relay::RelayHandle>>().inner().clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(error)=relay::start(relay,8787).await {eprintln!("{error}");return;}
@@ -123,7 +144,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![start_sync_relay, stop_sync_relay, discover_displays, set_display_fullscreen, exit_tablet])
+        .invoke_handler(tauri::generate_handler![start_sync_relay, stop_sync_relay, discover_displays, set_display_fullscreen, exit_tablet, camera_attach])
         .run(tauri::generate_context!())
         .expect("展厅地图启动失败");
 }

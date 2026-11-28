@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "sipBind": "0.0.0.0:5060",
+  "localIp": "192.168.1.10",
+  "platformId": "34020000002000000001",
+  "platformDomain": "3402000000",
+  "password": "摄像机的GB28181密码",
+  "deviceId": "34020000001320000001",
+  "channelId": "34020000001320000001",
+  "width": 1920,
+  "height": 1080,
+  "ffmpeg": "",
+  "controlBind": "0.0.0.0:1422"
+}
