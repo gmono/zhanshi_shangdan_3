@@ -118,6 +118,8 @@ button:focus-visible, a:focus-visible, ion-button:focus-visible { outline: 2px s
 .inner-divider .divider-arrows::before, .inner-divider .divider-arrows::after { content: ''; width: 0; height: 0; border-block: 1.2vh solid transparent; }
 .inner-divider .divider-arrows::before { border-right: 1.4vh solid #ffffffd9; }
 .inner-divider .divider-arrows::after { border-left: 1.4vh solid #ffffffd9; }
+/* Windows 展示端：箭头中心位于分割线距底边 1/3 处；平板仍保持垂直中线。 */
+.display-page .inner-divider .divider-arrows { top: 66.6667%; }
 .inner-divider[data-arrow="start"] .divider-arrows { left: 100%; transform: translateY(-50%); }
 .inner-divider[data-arrow="start"] .divider-arrows::before { display: none; }
 .inner-divider[data-arrow="end"] .divider-arrows { left: 0; transform: translate(-100%, -50%); }
