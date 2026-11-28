@@ -66,6 +66,13 @@ describe('页面局部状态补丁', () => {
     expect(afterSecond?.mapViews).toEqual({ 'map-1': map1, 'map-2': map2 });
     expect(afterSecond?.page).toBe('map-2');
   });
+  it('相机页与地图页共用共享页面，且不能混入地图相机补丁', () => {
+    const next = mergeStatePatch(base, 'camera', { page: 'camera', comparison: false });
+    expect(next?.page).toBe('camera');
+    expect(parseState(next)?.page).toBe('camera');
+    expect(mergeStatePatch(base, 'camera', { comparisonViews: {} })).toBeNull();
+    expect(mergeStatePatch(base, 'camera', { innerSplits: { 0: [0.2] } })).toBeNull();
+  });
   it('比较页仅更新指定地点的内层分割线', () => {
     const first = mergeStatePatch(base, 'comparison', { innerSplits: { 0: [0.25] } });
     const second = mergeStatePatch(first, 'comparison', { innerSplits: { 2: [0.75, 0.9] } });

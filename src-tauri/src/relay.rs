@@ -18,7 +18,7 @@ const HEARTBEAT_TIMEOUT: Duration = Duration::from_millis(75);
 #[derive(Default)] pub struct RelayHandle { task: Mutex<Option<JoinHandle<()>>> }
 
 fn valid_page(value: &str) -> bool {
-    value == "comparison" || value.strip_prefix("map-").is_some_and(|number| {
+    value == "comparison" || value == "camera" || value.strip_prefix("map-").is_some_and(|number| {
         !number.is_empty() && !number.starts_with('0') && number.len() <= 2 && number.chars().all(|ch| ch.is_ascii_digit())
     })
 }

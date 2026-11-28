@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { IonApp, IonButton, IonContent, IonIcon, IonPage, IonRouterOutlet, setupIonicReact, useIonRouter, useIonViewWillEnter, useIonViewWillLeave } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
-import { arrowBackOutline, mapOutline, settingsOutline } from 'ionicons/icons';
+import { arrowBackOutline, cameraOutline, mapOutline, settingsOutline } from 'ionicons/icons';
 import { Route, useLocation } from 'react-router-dom';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { getRole } from './platform/role';
@@ -12,6 +12,7 @@ import type { ResourceCatalog } from './map/resourceCatalog';
 import { useSync } from './sync/useSync';
 import { ConnectionPanel } from './components/connection/ConnectionPanel';
 import { CameraReset } from './components/CameraReset';
+import { CameraPage } from './components/CameraPage';
 import { TabletExit } from './components/TabletExit';
 import { useResourceCatalog } from './map/useResourceCatalog';
 import { ResourceStatus } from './map/ResourceStatus';
@@ -48,9 +49,10 @@ function DisplayApp({ sync }: { sync: Sync }) {
   useEffect(() => {
     if (isTauri()) void invoke('set_display_fullscreen', { enabled: true }).catch(() => undefined);
   }, []);
+  const camera = sync.state.page === 'camera';
   return <IonPage className="display-page"><IonContent className="display-content" scrollY={false} scrollX={false}>
-    {catalog && <MapStage state={sync.state} interactive showErrors={false} onChange={sync.update} catalog={catalog} tileHost="127.0.0.1" />}
-    {(!catalog || resources.progress?.phase === 'error') && <ResourceStatus message={resources.message} progress={resources.progress} />}
+    {camera ? <CameraPage controller={false} host="127.0.0.1" /> : catalog && <MapStage state={sync.state} interactive showErrors={false} onChange={sync.update} catalog={catalog} tileHost="127.0.0.1" />}
+    {!camera && (!catalog || resources.progress?.phase === 'error') && <ResourceStatus message={resources.message} progress={resources.progress} />}
   </IonContent></IonPage>;
 }
 
@@ -86,6 +88,11 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
       preparedPage.current = targetPage;
       return;
     }
+    if (targetPage === 'camera') {
+      update({ page: 'camera', comparison: false }, targetPage);
+      preparedPage.current = targetPage;
+      return;
+    }
     const map = catalog?.maps.find(item => item.id === targetPage);
     const camera = map ? initialCamera() : undefined;
     update({ page: targetPage, comparison: false, ...(camera ? {
@@ -93,7 +100,7 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
     } : {}) }, targetPage);
     preparedPage.current = targetPage;
   }, [catalog, update]);
-  const pageId = route.pathname === '/' ? 'comparison' : catalog?.maps.find(page => route.pathname === `/map/${page.id}`)?.id;
+  const pageId = route.pathname === '/' ? 'comparison' : route.pathname === '/camera' ? 'camera' : catalog?.maps.find(page => route.pathname === `/map/${page.id}`)?.id;
   useLayoutEffect(() => {
     // 转场完成后再跟随最新共享页，避免进出生命周期交错隐藏当前页面。
     if (navigating) return;
@@ -121,20 +128,23 @@ function ControllerRoutes({ sync }: { sync: Sync }) {
     }
     preparedPage.current = null;
     const targetPage = latestState.current.page;
-    if (pageId === targetPage || (targetPage !== 'comparison' && !catalog.maps.some(page => page.id === targetPage))) return;
+    if (pageId === targetPage || (targetPage !== 'comparison' && targetPage !== 'camera' && !catalog.maps.some(page => page.id === targetPage))) return;
     followedPage.current = targetPage;
     const home = targetPage === 'comparison';
-    const path = home ? '/' : `/map/${targetPage}`;
+    const path = home ? '/' : targetPage === 'camera' ? '/camera' : `/map/${targetPage}`;
     router.push(`${path}${route.search}`, home ? 'back' : 'forward', home ? 'pop' : pageId === 'comparison' ? 'push' : 'replace');
   }, [pageId, preparePage, connected, catalog, sync.state.page, route.pathname, route.search, router, navigating]);
   const showExit = route.pathname === '/' && sync.state.page === 'comparison';
-  return <div className={`controller-shell${showExit ? ' has-tablet-exit' : ''}`}><IonRouterOutlet ref={outlet}>
+  const showCamera = showExit && connected;
+  return <div className={`controller-shell${showExit ? ' has-tablet-exit' : ''}${showCamera ? ' has-tablet-camera' : ''}`}><IonRouterOutlet ref={outlet}>
     <Route exact path="/" render={() => <MapPage pageId="comparison" state={sync.state} update={sync.update} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} progress={resources.progress} />} />
     <Route exact path="/map/:pageId" render={({ match }) => <MapPage key={match.params.pageId} pageId={match.params.pageId} state={sync.state} update={sync.update} connected={connected} tileHost={sync.connection.ip} catalog={catalog} resourceMessage={resources.message} progress={resources.progress} />} />
     <Route exact path="/settings" render={() => <ConnectionPanel value={sync.connection} onSave={sync.configure} status={sync.status} displays={sync.peers.displays} error={sync.error} homePath={`/${route.search}`} />} />
+    <Route exact path="/camera" render={() => <IonPage className="controller-page"><IonContent className="controller-content" scrollY={false} scrollX={false}><main className="map-frame"><CameraPage controller host={sync.connection.ip} disabled={navigating} onBack={() => { preparePage('comparison'); router.push(`/${route.search}`, 'back', 'pop'); }} /></main></IonContent></IonPage>} />
   </IonRouterOutlet>
-    {connected && catalog && resources.progress?.phase !== 'error' && <CameraReset state={sync.state} pageId={pageId} catalog={catalog} disabled={navigating} onChange={update} />}
+    {connected && catalog && resources.progress?.phase !== 'error' && pageId !== 'camera' && <CameraReset state={sync.state} pageId={pageId} catalog={catalog} disabled={navigating} onChange={update} />}
     {showExit && <TabletExit disabled={navigating} />}
+    {showCamera && <IonButton className="camera-entry" disabled={navigating} onClick={() => { preparePage('camera'); router.push(`/camera${route.search}`, 'forward', 'push'); }}><IonIcon slot="start" icon={cameraOutline} />拍照</IonButton>}
     <FloatingControls pathname={route.pathname} search={route.search} catalog={catalog} preparePage={preparePage} navigating={navigating} /></div>;
 }
 
@@ -157,7 +167,7 @@ function FloatingControls({ pathname, search, catalog, preparePage, navigating }
   const comparison = pathname === '/';
   const pageId = pathname.split('/')[2];
   const mapPages = catalog?.maps || [];
-  return <div className="floating-controls" hidden={pathname === '/settings'} role="region" aria-label="地图操作面板">
+  return <div className="floating-controls" hidden={pathname === '/settings' || pathname === '/camera'} role="region" aria-label="地图操作面板">
     {comparison ? <nav className="map-page-buttons" aria-label="地图页面">
       {mapPages.map(page => <IonButton key={page.id} fill="clear" disabled={navigating} onClick={() => {
         preparePage(page.id);
